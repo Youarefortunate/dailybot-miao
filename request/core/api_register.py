@@ -180,9 +180,31 @@ class ApiRegister:
 
             return string_config_builder, current_platform
 
-        # 情况 B: 字典定义 (直接返回)
+        # 情况 B: 字典定义 (直接返回并支持参数合并)
         elif isinstance(value, dict):
-            return lambda p: value, current_platform
+
+            def dict_config_builder(p):
+                # 创建副本，避免污染原配置
+                res = value.copy()
+                if not p:
+                    return res
+
+                method = res.get("method", "GET").upper()
+                # 确定存放参数的字段 (GET -> params, 其他 -> json)
+                key = "params" if method == "GET" else "json"
+
+                # 如果原配置已经有这个 key 且是字典，则合并
+                if key in res and isinstance(res[key], dict) and isinstance(p, dict):
+                    new_payload = res[key].copy()
+                    new_payload.update(p)
+                    res[key] = new_payload
+                elif key not in res:
+                    # 如果没有对应的字段，直接赋值
+                    res[key] = p
+                # 否则（非字典冲突等情形）默认让 HttpRequest 层继续处理或覆盖
+                return res
+
+            return dict_config_builder, current_platform
 
         # 情况 C: 函数定义 (如 login(params))
         elif callable(value):
