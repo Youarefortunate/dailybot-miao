@@ -1,11 +1,13 @@
 from .platform_manager import platform_manager
 
+
 class BasePlatform:
     """
     平台基类
     """
+
     PLATFORM_NAME = "unknown"
-    URL_PATTERN = None # 支持正则或字符串
+    URL_PATTERN = None  # 支持正则或字符串
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -18,16 +20,12 @@ class BasePlatform:
     def __init__(self, config=None):
         if config is None:
             config = {}
-        self.name = config.get('name', 'Unknown')
-        self.base_url = config.get('baseURL', '')
-        self.token = config.get('token')
-        self.hostname = config.get('hostname', '')
+        self.name = config.get("name", "Unknown")
+        self.base_url = config.get("baseURL", "")
+        self.token = config.get("token")
+        self.hostname = config.get("hostname", "")
         # 默认响应结构映射
-        self.response_template = {
-            "code": "code",
-            "data": "data",
-            "message": "message"
-        }
+        self.response_template = {"code": "code", "data": "data", "message": "message"}
 
     def get_name(self):
         return self.name
@@ -48,23 +46,23 @@ class BasePlatform:
         请求拦截器：自动注入 Auth Header
         """
         # 获取用于认证的参数（如 open_id）
-        auth_params = config.get('params', {}) if config.get('method') == 'GET' else config.get('json', {})
-        
+        auth_params = config.get("params", {}) if config.get("method") == "GET" else config.get("json", {})
+
         # 自动获取 Token
         token = self.get_token(auth_params)
         if token:
-            if 'headers' not in config:
-                config['headers'] = {}
+            if "headers" not in config:
+                config["headers"] = {}
             # 设置认证头
             auth_header = self.get_auth_header(token)
             if auth_header:
-                config['headers']['Authorization'] = auth_header
+                config["headers"]["Authorization"] = auth_header
 
         # 设置平台特定的通用请求头
         headers = self.get_request_headers()
-        if 'headers' not in config:
-            config['headers'] = {}
-        config['headers'].update(headers)
+        if "headers" not in config:
+            config["headers"] = {}
+        config["headers"].update(headers)
         return config
 
     def get_auth_header(self, token):
@@ -81,14 +79,14 @@ class BasePlatform:
         响应拦截器：处理成功响应，并检测 Token 过期触发重试逻辑
         """
         response.response_template = self.response_template
-        
+
         # 1. 检测 Token 过期 (身份认证类错误)
         if self._is_token_expired(response):
             print(f"[{self.PLATFORM_NAME}] 检测到 Token 过期，尝试自动刷新...")
             # 获取刷新用的参数（通常是 open_id）
-            auth_params = config.get('params', {}) if config.get('method') == 'GET' else config.get('json', {})
+            auth_params = config.get("params", {}) if config.get("method") == "GET" else config.get("json", {})
             new_token = self.refresh_token(auth_params)
-            
+
             if new_token:
                 print(f"[{self.PLATFORM_NAME}] Token 刷新成功，正在重新发起原始请求...")
                 # 重新调用请求方法，config 已经在 refresh 后会被 set_request_interceptors 重新处理
@@ -106,7 +104,7 @@ class BasePlatform:
 
     def _parse_error_data(self, response):
         try:
-            if 'application/json' in response.headers.get('Content-Type', ''):
+            if "application/json" in response.headers.get("Content-Type", ""):
                 return response.json()
         except:
             pass
@@ -132,11 +130,9 @@ class BasePlatform:
         http_request.set_base_url(self.get_base_url())
 
         # 设置拦截器
-        http_request.set_req_interceptors(
-            lambda config: self.set_request_interceptors(config)
-        )
+        http_request.set_req_interceptors(lambda config: self.set_request_interceptors(config))
 
         http_request.set_res_interceptors(
             lambda response, config: self.set_response_interceptors(response, config, http_request),
-            lambda error, config: self.set_error_interceptors(error, config, http_request)
+            lambda error, config: self.set_error_interceptors(error, config, http_request),
         )

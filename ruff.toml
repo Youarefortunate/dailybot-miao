@@ -1,0 +1,15 @@
+# Ruff configuration
+# For more info, see: https://docs.astral.sh/ruff/settings/
+
+line-length = 120
+target-version = "py311"
+
+# The indent-width should be in the global scope, not under [format]
+indent-width = 4
+
+[format]
+# Use double quotes for strings.
+quote-style = "double"
+
+# Use spaces instead of tabs.
+indent-style = "space"

@@ -4,10 +4,12 @@ from dotenv import load_dotenv
 # 加载 .env 文件中的环境变量
 load_dotenv()
 
+
 class Config:
     """
     项目配置类，负责从环境变量中读取配置项
     """
+
     # 飞书应用的 App ID
     FEISHU_APP_ID = os.getenv("FEISHU_APP_ID", "")
     # 飞书应用的 App Secret
@@ -32,21 +34,21 @@ class Config:
     # 应用租户token（通常由代码动态获取）
     APP_TENANT_TOKEN = os.getenv("APP_TENANT_TOKEN", "")
 
+    # 请求库默认配置
+    DEFAULT_PLATFORM = os.getenv("DEFAULT_PLATFORM", "feishu")
+    DEFAULT_BASE_URL = os.getenv("DEFAULT_BASE_URL", "https://open.feishu.cn")
+
     @classmethod
     def validate(cls):
         """
         验证必要的配置项是否存在
         """
-        required_fields = [
-            "FEISHU_APP_ID",
-            "FEISHU_APP_SECRET",
-            "DOUBAO_API_KEY",
-            "TARGET_CHAT_ID"
-        ]
+        required_fields = ["FEISHU_APP_ID", "FEISHU_APP_SECRET", "DOUBAO_API_KEY", "TARGET_CHAT_ID"]
         missing = [f for f in required_fields if not getattr(cls, f)]
         if missing:
             print(f"缺少必要的配置项: {', '.join(missing)}")
             return False
         return True
+
 
 config = Config()

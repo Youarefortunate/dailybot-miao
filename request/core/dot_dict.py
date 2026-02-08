@@ -2,6 +2,7 @@ class DotDict(dict):
     """
     支持点符号访问的字典包装类
     """
+
     def __getattr__(self, item):
         try:
             return self[item]

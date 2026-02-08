@@ -1,10 +1,11 @@
-import collections
+
 
 def is_plain_object(obj):
     """
     判断是否为普通字典对象
     """
     return isinstance(obj, dict)
+
 
 def for_each(collection, callback):
     """

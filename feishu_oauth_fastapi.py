@@ -11,14 +11,19 @@ TASKLIST_GUID = config.TASKLIST_GUID
 
 app = FastAPI()
 
+
 @app.get("/")
 @app.get("/auth")
 def auth():
-    return RedirectResponse(f"https://open.feishu.cn/open-apis/authen/v1/index?app_id={FEISHU_APP_ID}&redirect_uri={OAUTH_REDIRECT_URI}&state=state-test")
+    return RedirectResponse(
+        f"https://open.feishu.cn/open-apis/authen/v1/index?app_id={FEISHU_APP_ID}&redirect_uri={OAUTH_REDIRECT_URI}&state=state-test"
+    )
+
 
 @app.get("/favicon.ico")
 @app.get("/.well-known/{_path:path}")
-def silence(): return {}
+def silence():
+    return {}
 
 
 @app.get("/callback")
@@ -29,12 +34,15 @@ def callback(code: str):
     我们使用这个 'code' 去换取用户的 access_token。
     """
     url = "https://open.feishu.cn/open-apis/authen/v1/access_token"
-    resp = requests.post(url, json={
-        "grant_type": "authorization_code",
-        "code": code,
-        "app_id": FEISHU_APP_ID,
-        "app_secret": FEISHU_APP_SECRET
-    })
+    resp = requests.post(
+        url,
+        json={
+            "grant_type": "authorization_code",
+            "code": code,
+            "app_id": FEISHU_APP_ID,
+            "app_secret": FEISHU_APP_SECRET,
+        },
+    )
     data = resp.json()
     if "data" in data:
         open_id = data["data"]["open_id"]
@@ -43,6 +51,7 @@ def callback(code: str):
         save_token(open_id, access_token, refresh_token)
         return HTMLResponse(f"<h2>授权成功！open_id: {open_id}</h2>")
     return HTMLResponse(f"<h2>授权失败！{data}</h2>")
+
 
 @app.get("/tasks")
 def get_tasks(open_id: str = None):
@@ -53,7 +62,7 @@ def get_tasks(open_id: str = None):
     if not open_id:
         tokens = load_all_tokens()
         open_id = next(iter(tokens), None)
-    
+
     if not open_id or not get_token(open_id):
         return {"msg": "请先完成授权，或通过 ?open_id= 传参"}
 
@@ -61,7 +70,7 @@ def get_tasks(open_id: str = None):
     target_guid = (TASKLIST_GUID or config.TASKLIST_GUID).strip()
 
     print(f"target_guid: {target_guid}")
-    
+
     if not target_guid:
         return {"msg": "未配置 TASKLIST_GUID"}
 
@@ -69,5 +78,3 @@ def get_tasks(open_id: str = None):
     headers = {"Authorization": f"Bearer {get_token(open_id)}"}
     resp = requests.get(url, headers=headers, params={"page_size": 50, "user_id_type": "open_id"})
     return resp.json()
-
-

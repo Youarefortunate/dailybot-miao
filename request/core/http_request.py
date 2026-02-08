@@ -1,17 +1,19 @@
 import requests
 
+
 class HttpRequest:
     """
     HTTP 请求类
     """
+
     def __init__(self, opts=None):
         if opts is None:
             opts = {}
-        
+
         self.session = requests.Session()
-        self.timeout = opts.get('timeout', 10)
-        self.base_url = opts.get('baseURL', '')
-        
+        self.timeout = opts.get("timeout", 10)
+        self.base_url = opts.get("baseURL", "")
+
         self.before_functions = []
         self.request_interceptor = None
         self.response_interceptor = None
@@ -51,15 +53,15 @@ class HttpRequest:
                 raise e
 
         # 构造请求参数
-        method = config.get('method', 'GET').upper()
-        url = config.get('url', '')
-        if not url.startswith('http') and self.base_url:
+        method = config.get("method", "GET").upper()
+        url = config.get("url", "")
+        if not url.startswith("http") and self.base_url:
             url = f"{self.base_url.rstrip('/')}/{url.lstrip('/')}"
-        
-        params = config.get('params')
-        data = config.get('data')
-        json_data = config.get('json')
-        headers = config.get('headers', {})
+
+        params = config.get("params")
+        data = config.get("data")
+        json_data = config.get("json")
+        headers = config.get("headers", {})
 
         try:
             resp = self.session.request(
@@ -69,9 +71,9 @@ class HttpRequest:
                 data=data,
                 json=json_data,
                 headers=headers,
-                timeout=config.get('timeout', self.timeout)
+                timeout=config.get("timeout", self.timeout),
             )
-            
+
             # 响应拦截器
             if self.response_interceptor:
                 callback, fail = self.response_interceptor
