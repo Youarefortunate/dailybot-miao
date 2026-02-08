@@ -3,4 +3,5 @@ __pycache__/
 .agent/
 .env
 .vscode
+.token.json
 .ruff_cache

@@ -189,19 +189,33 @@ class ApiRegister:
                 if not p:
                     return res
 
+                # 提取控制类字段 (headers, timeout, platform, params, json)
+                p_remain = p.copy() if isinstance(p, dict) else p
+                if isinstance(p_remain, dict):
+                    for control_key in ["headers", "timeout", "platform", "params", "json"]:
+                        if control_key in p_remain:
+                            override_val = p_remain.pop(control_key)
+                            # 如果已有该字段且都是字典，则尝试合并
+                            if control_key in res and isinstance(res[control_key], dict) and isinstance(override_val, dict):
+                                new_val = res[control_key].copy()
+                                new_val.update(override_val)
+                                res[control_key] = new_val
+                            else:
+                                # 非字典或原配置无该键，直接覆盖
+                                res[control_key] = override_val
+
                 method = res.get("method", "GET").upper()
-                # 确定存放参数的字段 (GET -> params, 其他 -> json)
+                # 确定默认存放参数的字段 (GET -> params, 其他 -> json)
                 key = "params" if method == "GET" else "json"
 
-                # 如果原配置已经有这个 key 且是字典，则合并
-                if key in res and isinstance(res[key], dict) and isinstance(p, dict):
+                # 如果原配置已经有这个 key 且是字典，则与剩余业务参数合并
+                if key in res and isinstance(res[key], dict) and isinstance(p_remain, dict):
                     new_payload = res[key].copy()
-                    new_payload.update(p)
+                    new_payload.update(p_remain)
                     res[key] = new_payload
                 elif key not in res:
-                    # 如果没有对应的字段，直接赋值
-                    res[key] = p
-                # 否则（非字典冲突等情形）默认让 HttpRequest 层继续处理或覆盖
+                    # 如果没有对应的字段，直接赋值剩余参数
+                    res[key] = p_remain
                 return res
 
             return dict_config_builder, current_platform
