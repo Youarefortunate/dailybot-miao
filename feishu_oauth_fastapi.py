@@ -1,80 +1,103 @@
-# from fastapi import FastAPI
-# from fastapi.responses import RedirectResponse, HTMLResponse
-# from config import config
-# from token_store import save_token, get_token, load_all_tokens
-# from api import apis
-# from request.hooks import use_request
+import json
+from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
+from api import apis
+from config import config
+from request.hooks import use_request
+from token_store import save_token
 
-# FEISHU_APP_ID = config.FEISHU_APP_ID
-# FEISHU_APP_SECRET = config.FEISHU_APP_SECRET
-# OAUTH_REDIRECT_URI = config.OAUTH_REDIRECT_URI
-# TASKLIST_GUID = config.TASKLIST_GUID
+app = FastAPI()
 
-# app = FastAPI()
+@app.get("/callback")
+def callback(code: str):
+    """授权回调接口"""
+    print(f"📡 接收到授权回调，Code: {code[:10]}...")
+    token_api = use_request(apis.feishu_auth.get_access_token)
+    try:
+        data = token_api.fetch({"code": code})
+        if data and "open_id" in data:
+            open_id = data["open_id"]
+            save_token(open_id, data["access_token"], data["refresh_token"])
+            # 授权成功后发送精美通知卡片
+            print(f"✅ 授权成功，准备为用户 {open_id} 发送成功提示...")
+            send_success_card(open_id)
+            return HTMLResponse("<h2>授权成功！请返回终端查看进度。</h2>")
+    except Exception as e:
+        print(f"❌ 授权回调处理失败: {e}")
+        return HTMLResponse(f"<h2>授权失败: {e}</h2>")
+    return HTMLResponse("<h2>授权失败：未获取到有效数据</h2>")
 
+def get_tenant_token():
+    """获取机器人令牌 (无需用户授权)"""
+    req = use_request(apis.feishu_auth.get_tenant_token)
+    data = req.fetch()
+    return data.get("tenant_access_token") if data else None
 
-# @app.get("/")
-# @app.get("/auth")
-# def auth():
-#     return RedirectResponse(
-#         f"https://open.feishu.cn/open-apis/authen/v1/index?app_id={FEISHU_APP_ID}&redirect_uri={OAUTH_REDIRECT_URI}&state=state-test"
-#     )
+def send_success_card(open_id):
+    """发送授权成功卡片"""
+    tenant_token = get_tenant_token()
+    if not tenant_token:
+        return
 
+    card = {
+        "config": {"wide_screen_mode": True},
+        "header": {"title": {"tag": "plain_text", "content": "🎊 授权成功"}, "template": "green"},
+        "elements": [
+            {"tag": "div", "text": {"tag": "lark_md", "content": "感谢您的授权！机器人现在可以代表您读取任务清单了。\n\n**后续流程：**\n- 机器人将自动检测到授权并开始生成日报。\n- 如果由于长时间不使用导致失效，您可以在群聊中再次点击授权按钮（无感刷新机制会尽量避免此情况）。"}},
+            {"tag": "hr"},
+            {"tag": "note", "elements": [{"tag": "plain_text", "content": "您可以关闭此页面返回飞书。"}]}
+        ],
+    }
 
-# @app.get("/favicon.ico")
-# @app.get("/.well-known/{_path:path}")
-# def silence():
-#     return {}
+    req = use_request(apis.feishu_im.send_message)
+    try:
+        req.fetch(
+            {
+                "params": {"receive_id_type": "open_id"},
+                "receive_id": open_id,  # 直接推送到用户
+                "content": json.dumps(card),
+                "msg_type": "interactive",
+                "headers": {"Authorization": f"Bearer {tenant_token}"},
+            }
+        )
+        print(f"✨ 已向用户 {open_id} 推送授权成功反馈卡片")
+    except Exception as e:
+        print(f"⚠️ 推送授权成功反馈失败: {e}")
 
+def send_auth_nudge():
+    """主动推送授权引导卡片"""
+    tenant_token = get_tenant_token()
+    if not tenant_token:
+        print("❌ 无法获取机器人 Token，无法发送授权引导。")
+        return
 
-# @app.get("/callback")
-# def callback(code: str):
-#     """
-#     飞书授权后的回调接口。
-#     飞书会带上一个 'code' 参数跳转回这个地址。
-#     我们使用这个 'code' 去换取用户的 access_token。
-#     """
-#     token_api = use_request(apis.feishu_auth.get_access_token)
-#     data = token_api.fetch({"code": code})
+    auth_url = (
+        f"https://open.feishu.cn/open-apis/authen/v1/index?app_id={config.FEISHU_APP_ID}"
+        f"&redirect_uri={config.OAUTH_REDIRECT_URI}&state=init"
+    )
 
-#     if data and "open_id" in data:
-#         open_id = data["open_id"]
-#         access_token = data["access_token"]
-#         refresh_token = data["refresh_token"]
-#         save_token(open_id, access_token, refresh_token)
-#         return HTMLResponse(f"<h2>授权成功！open_id: {open_id}</h2>")
-#     return HTMLResponse(f"<h2>授权失败！{data}</h2>")
+    card = {
+        "config": {"wide_screen_mode": True},
+        "header": {"title": {"tag": "plain_text", "content": "🔐 机器人需要您的授权"}, "template": "orange"},
+        "elements": [
+            {"tag": "div", "text": {"tag": "lark_md", "content": "检测到目前没有有效的用户授权，机器人无法读取任务详情。\n请点击下方按钮完成授权后，机器人将自动继续工作。"}},
+            {
+                "tag": "action",
+                "actions": [{"tag": "button", "text": {"tag": "plain_text", "content": "立即授权"}, "type": "primary", "url": auth_url}],
+            },
+        ],
+    }
 
-
-# @app.get("/tasks")
-# def get_tasks(open_id: str = None):
-#     """
-#     获取任务列表。如果未提供 open_id，则自动尝试使用最近一次授权的用户。
-#     """
-#     # 自动获取第一个可用的 open_id
-#     if not open_id:
-#         tokens = load_all_tokens()
-#         open_id = next(iter(tokens), None)
-
-#     if not open_id or not get_token(open_id):
-#         return {"msg": "请先完成授权，或通过 ?open_id= 传参"}
-
-#     # 优先使用配置中的 GUID，并确保去除了多余空格
-#     target_guid = (TASKLIST_GUID or config.TASKLIST_GUID).strip()
-
-#     if not target_guid:
-#         return {"msg": "未配置 TASKLIST_GUID"}
-
-#     tasks_api = use_request(apis.feishu_task.get_tasks)
-#     try:
-#         data = tasks_api.fetch(
-#             {
-#                 "tasklist_guid": target_guid,
-#                 "page_size": 50,
-#                 "user_id_type": "open_id",
-#                 "open_id": open_id,  # 供平台实例自动获取 token
-#             }
-#         )
-#         return data
-#     except Exception as e:
-#         return {"error": str(e)}
+    req = use_request(apis.feishu_im.send_message)
+    try:
+        req.fetch(
+            {
+                "receive_id": config.TARGET_CHAT_ID,
+                "content": json.dumps(card),
+                "msg_type": "interactive",
+                "headers": {"Authorization": f"Bearer {tenant_token}"},
+            }
+        )
+        print("🚀 已向群聊发送授权引导卡片")
+    except Exception as e:
+        print(f"❌ 发送引导卡片失败: {e}")
