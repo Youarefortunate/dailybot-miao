@@ -28,6 +28,6 @@ def job():
 
 if __name__ == "__main__":
     scheduler = BlockingScheduler()
-    scheduler.add_job(job, "cron", hour=9, minute=0)
-    print("定时推送服务已启动，每天9:00自动推送")
+    scheduler.add_job(job, "cron", hour=18, minute=20)
+    print("定时推送服务已启动，每天18:20自动推送")
     scheduler.start()

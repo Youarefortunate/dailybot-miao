@@ -1,6 +1,7 @@
 import json
 import os
-import requests
+from api import apis
+from request.hooks import use_request
 
 # 存储 Token 的本地 JSON 文件名
 TOKEN_FILE = "token.json"
@@ -56,15 +57,23 @@ def get_refresh_token(open_id):
 
 def refresh_user_token(open_id, refresh_token, tenant_access_token):
     """
-    使用 refresh_token 去飞书服务器换取新的 access_token。
+    使用 refresh_token 去飞书服务器换取新的 access_token
     """
-    url = "https://open.feishu.cn/open-apis/authen/v1/refresh_access_token"
-    headers = {"Authorization": f"Bearer {tenant_access_token}"}
-    resp = requests.post(url, headers=headers, json={"grant_type": "refresh_token", "refresh_token": refresh_token})
-    data = resp.json().get("data", {})
-    if "access_token" in data:
-        save_token(open_id, data["access_token"], data["refresh_token"])
-        print(f"open_id {open_id} access_token 已刷新")
-        return data["access_token"]
-    print(f"open_id {open_id} access_token 刷新失败: {resp.text}")
+    try:
+        refresh_req = use_request(apis.feishu_auth.refresh_user_token)
+        data = refresh_req.fetch(
+            {
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token,
+                "headers": {"Authorization": f"Bearer {tenant_access_token}"},
+            }
+        )
+        # use_request 对飞书平台会自动解包 data 字段，这里拿到的就是接口返回的 data
+        if data and "access_token" in data:
+            save_token(open_id, data["access_token"], data.get("refresh_token", refresh_token))
+            print(f"open_id {open_id} access_token 已刷新")
+            return data["access_token"]
+        print(f"open_id {open_id} access_token 刷新失败: {data}")
+    except Exception as e:
+        print(f"open_id {open_id} access_token 刷新异常: {e}")
     return None

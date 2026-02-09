@@ -9,25 +9,9 @@ from request.hooks import use_request
 from request.setup import setup_request
 from token_store import load_all_tokens
 from feishu_oauth_fastapi import app, send_auth_nudge, get_tenant_token
-
-def fetch_comments(open_id, task_guid):
-    """获取任务评论"""
-    req = use_request(apis.feishu_task.get_comments)
-    try:
-        data = req.fetch({"resource_id": task_guid, "resource_type": "task", "open_id": open_id})
-        return data.get("items", []) if data else []
-    except:
-        return []
-
-def get_user_name(open_id):
-    """通过 open_id 获取姓名"""
-    tenant_token = get_tenant_token()
-    req = use_request(apis.feishu_contact.get_user_info)
-    try:
-        data = req.fetch({"user_id": open_id, "headers": {"Authorization": f"Bearer {tenant_token}"}})
-        return data.get("user", {}).get("name", open_id) if data else open_id
-    except:
-        return open_id
+from services.task_service import fetch_comments, get_tasks_by_user
+from services.ai_service import summarize_with_doubao
+from services.contact_service import get_user_name
 
 def run_reporting_logic():
     """核心日报生成与推送逻辑"""
@@ -37,17 +21,10 @@ def run_reporting_logic():
     open_ids = list(tokens.keys())
 
     all_tasks = []
-    tasks_api = use_request(apis.feishu_task.get_tasks)
-
     for open_id in open_ids:
-        try:
-            # use_request 返回的是 data 字段，飞书任务列表的 data 是 {"items": [...], ...}
-            res = tasks_api.fetch({"tasklist_guid": config.TASKLIST_GUID, "open_id": open_id, "page_size": 50})
-            items = res.get("items", []) if isinstance(res, dict) else []
-            if items:
-                all_tasks.extend(items)
-        except Exception as e:
-            print(f"⚠️ 拉取用户 {open_id} 任务失败: {e}")
+        tasks = get_tasks_by_user(open_id, config.TASKLIST_GUID)
+        if tasks:
+            all_tasks.extend(tasks)
 
     if not all_tasks:
         print("📭 未发现任何新任务。")
@@ -123,7 +100,7 @@ def main():
     # 3. 授权检测循环
     start_time = time.time()
     nudge_sent = False
-    timeout_seconds = 180  # 3 分钟超时
+    timeout_seconds = 60  # 1 分钟超时
 
     while True:
         tokens = load_all_tokens()
@@ -151,21 +128,6 @@ def main():
         run_reporting_logic()
     except Exception as e:
         print(f"❌ 程序运行时出错: {e}")
-
-# 这里的辅助函数暂时从旧代码迁移过来，直到完全 API 化
-def summarize_with_doubao(text):
-    import requests
-    url = config.DOUBAO_BASE_URL
-    headers = {"Authorization": f"Bearer {config.DOUBAO_API_KEY}", "Content-Type": "application/json"}
-    data = {
-        "model": config.DOUBAO_MODEL,
-        "messages": [
-            {"role": "system", "content": "你是一个专业日报助手，请总结以下任务，使用列表形式，不要带 markdown 代码块。"},
-            {"role": "user", "content": text}
-        ],
-    }
-    resp = requests.post(url, headers=headers, json=data)
-    return resp.json().get("choices", [{}])[0].get("message", {}).get("content", "总结失败")
 
 if __name__ == "__main__":
     main()
