@@ -189,23 +189,32 @@ class ApiRegister:
                 if not p:
                     return res
 
-                # 提取控制类字段 (headers, timeout, platform, params, json)
+                # 提取控制类字段并透传
                 p_remain = p.copy() if isinstance(p, dict) else p
                 if isinstance(p_remain, dict):
-                    for control_key in ["headers", "timeout", "platform", "params", "json"]:
-                        if control_key in p_remain:
-                            override_val = p_remain.pop(control_key)
+                    method = res.get("method", "GET").upper()
+                    # 业务参数默认存放字段
+                    payload_key = "params" if method == "GET" else "json"
+                    
+                    # 定义识别为配置项的键：基础白名单 + API定义中已有的键
+                    control_keys = {"headers", "timeout", "platform", "params", "json", "auth_type"}
+                    
+                    # 遍历参数，识别配置项并移动到顶层
+                    for k in list(p_remain.keys()):
+                        # 如果是已知配置键，或者是 API 定义中已存在的特殊配置键 (且不是业务负载键)
+                        if k in control_keys or (k in res and k != payload_key):
+                            override_val = p_remain.pop(k)
                             # 如果已有该字段且都是字典，则尝试合并
-                            if control_key in res and isinstance(res[control_key], dict) and isinstance(override_val, dict):
-                                new_val = res[control_key].copy()
+                            if k in res and isinstance(res[k], dict) and isinstance(override_val, dict):
+                                new_val = res[k].copy()
                                 new_val.update(override_val)
-                                res[control_key] = new_val
+                                res[k] = new_val
                             else:
                                 # 非字典或原配置无该键，直接覆盖
-                                res[control_key] = override_val
+                                res[k] = override_val
 
                 method = res.get("method", "GET").upper()
-                # 确定默认存放参数的字段 (GET -> params, 其他 -> json)
+                # 确定最终业务参数存放的字段 (GET -> params, 其他 -> json)
                 key = "params" if method == "GET" else "json"
 
                 # 如果原配置已经有这个 key 且是字典，则与剩余业务参数合并

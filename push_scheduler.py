@@ -4,7 +4,6 @@ import json
 import os
 from token_store import refresh_user_token, get_refresh_token
 
-
 def refresh_all_tokens():
     """刷新所有用户的access_token"""
     if os.path.exists("token.json"):
@@ -16,7 +15,6 @@ def refresh_all_tokens():
             if refresh_token:
                 refresh_user_token(open_id, refresh_token)
 
-
 def job():
     """
     定时执行的任务函数
@@ -27,7 +25,6 @@ def job():
     refresh_all_tokens()
     # 执行推送任务
     main.main()
-
 
 if __name__ == "__main__":
     scheduler = BlockingScheduler()
