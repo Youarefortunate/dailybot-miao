@@ -1,6 +1,12 @@
 from api import apis
 from ..modules.base_platform import BasePlatform
-from token_store import get_refresh_token, save_token, get_token as get_local_token
+from token_store import (
+    get_refresh_token,
+    save_token,
+    get_token as get_local_token,
+    fetch_tenant_access_token,
+    refresh_user_token as store_refresh_user_token,
+)
 from ...hooks.use_request import use_request
 
 
@@ -75,9 +81,7 @@ class FeishuPlatform(BasePlatform):
 
         try:
             # 1. 获取飞书自定义机器人token
-            tenant_token_req = use_request(apis.feishu_auth.get_tenant_token)
-            tenant_data = tenant_token_req.fetch()
-            tenant_tk = tenant_data.get("tenant_access_token") if tenant_data else None
+            tenant_tk = fetch_tenant_access_token()
 
             if not tenant_tk:
                 print("[Feishu] 刷新失败：无法获取 tenant_access_token")

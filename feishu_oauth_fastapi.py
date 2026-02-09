@@ -4,7 +4,7 @@ from fastapi.responses import HTMLResponse
 from api import apis
 from config import config
 from request.hooks import use_request
-from token_store import save_token
+from token_store import save_token, fetch_tenant_access_token
 
 app = FastAPI()
 
@@ -15,9 +15,17 @@ def callback(code: str):
     token_api = use_request(apis.feishu_auth.get_access_token)
     try:
         data = token_api.fetch({"code": code})
-        if data and "open_id" in data:
+        if data and "access_token" in data:
             open_id = data["open_id"]
-            save_token(open_id, data["access_token"], data["refresh_token"])
+            access_token = data["access_token"]
+            refresh_token = data["refresh_token"]
+
+            # 获取自建应用 token (tenant_access_token)
+            print(f"🔄 正在为用户 {open_id} 获取自建应用 Token...")
+            app_token = fetch_tenant_access_token()
+
+            # 一起存入 token_store
+            save_token(open_id, access_token, refresh_token, app_token=app_token)
             # 授权成功后发送精美通知卡片
             print(f"✅ 授权成功，准备为用户 {open_id} 发送成功提示...")
             send_success_card(open_id)
@@ -28,10 +36,8 @@ def callback(code: str):
     return HTMLResponse("<h2>授权失败：未获取到有效数据</h2>")
 
 def get_tenant_token():
-    """获取机器人令牌 (无需用户授权)"""
-    req = use_request(apis.feishu_auth.get_tenant_token)
-    data = req.fetch()
-    return data.get("tenant_access_token") if data else None
+    """兼容性保留，内部调用封装后的逻辑"""
+    return fetch_tenant_access_token()
 
 def send_success_card(open_id):
     """发送授权成功卡片"""

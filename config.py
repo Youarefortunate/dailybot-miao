@@ -34,6 +34,10 @@ class Config:
     # 应用租户token（通常由代码动态获取）
     APP_TENANT_TOKEN = os.getenv("APP_TENANT_TOKEN", "")
 
+    # 企业微信配置
+    WECOM_CORP_ID = os.getenv("WECOM_CORP_ID", "")
+    WECOM_CORP_SECRET = os.getenv("WECOM_CORP_SECRET", "")
+
     # 请求库默认配置
     DEFAULT_PLATFORM = os.getenv("DEFAULT_PLATFORM", "feishu")
     DEFAULT_BASE_URL = os.getenv("DEFAULT_BASE_URL", "https://open.feishu.cn")
