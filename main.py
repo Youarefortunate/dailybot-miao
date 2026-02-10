@@ -13,14 +13,12 @@ from feishu_oauth_fastapi import app, send_auth_nudge, get_tenant_token
 from services.task_service import fetch_comments, get_tasks_by_user
 from services.ai_service import summarize_with_doubao
 from services.contact_service import get_user_name
+from crawlers.gitlab_crawler import GitlabCrawler
 
 
-def run_reporting_logic():
-    """核心日报生成与推送逻辑"""
-    log.info("🎬 开始执行日报生成流程...")
-
-    tokens = load_all_tokens()
-    open_ids = list(tokens.keys())
+def collect_task_report(open_ids):
+    """采集飞书任务数据，返回汇总文本"""
+    log.info("📋 正在采集飞书任务数据...")
 
     all_tasks = []
     for open_id in open_ids:
@@ -29,8 +27,8 @@ def run_reporting_logic():
             all_tasks.extend(tasks)
 
     if not all_tasks:
-        log.warning("📭 未发现任何新任务。")
-        return
+        log.info("📭 未发现任何飞书任务。")
+        return ""
 
     # 去重与分组 (健壮性检查)
     unique_tasks = {
@@ -70,29 +68,88 @@ def run_reporting_logic():
         for uid in set(members):
             user_day_data.setdefault(uid, {}).setdefault(date_str, []).append(info)
 
-    # 生成文本
-    report_text = ""
+    # 生成任务部分文本
+    report_text = "【飞书任务进展】\n"
     for uid, dates in user_day_data.items():
         name = get_user_name(uid)
-        report_text += f"\n【{name}】\n"
+        report_text += f"\n  {name}:\n"
         for date, tasks in dates.items():
             for t in tasks:
                 status = "✅已完成" if t["completed"] else "🕒进行中"
-                report_text += f"- {t['summary']} ({status}, {t['date']})\n"
+                report_text += f"  - {t['summary']} ({status}, {t['date']})\n"
                 if t["desc"]:
-                    report_text += f"  描述: {t['desc']}\n"
+                    report_text += f"    描述: {t['desc']}\n"
                 if t["comments"]:
-                    report_text += f"  评论: {' | '.join(t['comments'])}\n"
+                    report_text += f"    评论: {' | '.join(t['comments'])}\n"
 
-    # AI 总结
+    log.info("✅ 飞书任务数据采集完成。")
+    return report_text
+
+
+def collect_gitlab_report():
+    """采集 GitLab 提交数据，返回汇总文本"""
+    log.info("📋 正在采集 GitLab 提交记录...")
+
+    crawler = GitlabCrawler()
+    commits_map = crawler.get_today_commits()
+
+    if not commits_map:
+        log.info("📭 今日没有符合条件的 GitLab 提交记录。")
+        return ""
+
+    # 生成提交部分文本
+    report_text = "【GitLab 代码提交】\n"
+    for repo_name, messages in commits_map.items():
+        report_text += f"\n  仓库: {repo_name}\n"
+        for msg in messages:
+            report_text += f"  - {msg}\n"
+
+    log.info(f"✅ GitLab 提交记录采集完成，共 {len(commits_map)} 个仓库有提交。")
+    return report_text
+
+
+def run_reporting_logic():
+    """核心日报生成与推送逻辑：采集 → AI 总结 → 推送"""
+    log.info("🎬 开始执行日报生成流程...")
+
+    tokens = load_all_tokens()
+    open_ids = list(tokens.keys())
+
+    # ===== 第一阶段：数据采集 =====
+    report_parts = []
+
+    # 1. 采集飞书任务
+    task_text = collect_task_report(open_ids)
+    if task_text:
+        report_parts.append(task_text)
+
+    # 2. 采集 GitLab 提交记录
+    gitlab_text = collect_gitlab_report()
+    if gitlab_text:
+        report_parts.append(gitlab_text)
+
+    if not report_parts:
+        log.warning("📭 今日没有任何可汇报的数据。")
+        return
+
+    # ===== 第二阶段：AI 总结 =====
+    raw_report = "\n".join(report_parts)
     log.info("🤖 正在请求 AI 总结...")
-    summary = summarize_with_doubao(report_text)
+    try:
+        summary = summarize_with_doubao(raw_report)
+    except Exception as e:
+        log.error(f"AI 总结出错: {e}")
+        summary = raw_report
 
-    # 推送
+    # ===== 第三阶段：推送到飞书群聊 =====
+    if not config.TARGET_CHAT_ID:
+        log.warning("未配置 TARGET_CHAT_ID，推送已跳过。")
+        return
+
     tenant_token = get_tenant_token()
     card = {
         "header": {
-            "title": {"tag": "plain_text", "content": "📊 团队进度总结"},
+            "title": {"tag": "plain_text", "content": "📊 每日工作总结"},
             "template": "blue",
         },
         "elements": [{"tag": "div", "text": {"tag": "lark_md", "content": summary}}],
@@ -107,7 +164,7 @@ def run_reporting_logic():
             "headers": {"Authorization": f"Bearer {tenant_token}"},
         }
     )
-    log.info("✅ 报表已推送至群聊")
+    log.info("✅ 日报已推送至群聊")
 
 
 def main():
@@ -143,11 +200,11 @@ def main():
         # 每 10 秒重检一次
         time.sleep(10)
 
-    # 3. 执行业务逻辑
+    # 3. 执行日报生成与推送
     try:
         run_reporting_logic()
     except Exception as e:
-        log.error(f"❌ 程序运行时出错: {e}")
+        log.error(f"❌ 日报生成出错: {e}")
 
 
 if __name__ == "__main__":
