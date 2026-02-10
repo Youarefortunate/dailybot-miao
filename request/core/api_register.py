@@ -127,7 +127,12 @@ class ApiRegister:
 
             if isinstance(data, dict):
                 # 优先级: 接口返回的 platform > 模块定义的 platform > 全局默认平台
-                req_platform = data.get("platform") or current_platform or self.platform or "feishu"
+                req_platform = (
+                    data.get("platform")
+                    or current_platform
+                    or self.platform
+                    or "feishu"
+                )
                 req_url = data.get("url") or data.get("baseURL")
 
                 # 获取对应平台的请求实例并发起请求
@@ -195,17 +200,28 @@ class ApiRegister:
                     method = res.get("method", "GET").upper()
                     # 业务参数默认存放字段
                     payload_key = "params" if method == "GET" else "json"
-                    
+
                     # 定义识别为配置项的键：基础白名单 + API定义中已有的键
-                    control_keys = {"headers", "timeout", "platform", "params", "json", "auth_type"}
-                    
+                    control_keys = {
+                        "headers",
+                        "timeout",
+                        "platform",
+                        "params",
+                        "json",
+                        "auth_type",
+                    }
+
                     # 遍历参数，识别配置项并移动到顶层
                     for k in list(p_remain.keys()):
                         # 如果是已知配置键，或者是 API 定义中已存在的特殊配置键 (且不是业务负载键)
                         if k in control_keys or (k in res and k != payload_key):
                             override_val = p_remain.pop(k)
                             # 如果已有该字段且都是字典，则尝试合并
-                            if k in res and isinstance(res[k], dict) and isinstance(override_val, dict):
+                            if (
+                                k in res
+                                and isinstance(res[k], dict)
+                                and isinstance(override_val, dict)
+                            ):
                                 new_val = res[k].copy()
                                 new_val.update(override_val)
                                 res[k] = new_val
@@ -218,7 +234,11 @@ class ApiRegister:
                 key = "params" if method == "GET" else "json"
 
                 # 如果原配置已经有这个 key 且是字典，则与剩余业务参数合并
-                if key in res and isinstance(res[key], dict) and isinstance(p_remain, dict):
+                if (
+                    key in res
+                    and isinstance(res[key], dict)
+                    and isinstance(p_remain, dict)
+                ):
                     new_payload = res[key].copy()
                     new_payload.update(p_remain)
                     res[key] = new_payload

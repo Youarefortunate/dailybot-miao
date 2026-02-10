@@ -17,7 +17,7 @@ def fetch_comments(open_id, task_guid):
 
 def get_tasks_by_user(open_id, tasklist_guid):
     """获取指定用户的任务列表"""
-    tasks_api = use_request(apis.feishu_app_task.get_tasks)
+    tasks_api = use_request(apis.feishu_user_task.get_tasks)
     try:
         res = tasks_api.fetch(
             {"tasklist_guid": tasklist_guid, "open_id": open_id, "page_size": 50}
