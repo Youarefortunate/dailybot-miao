@@ -1,3 +1,4 @@
+from loguru import logger
 from api import apis
 from request.hooks import use_request
 
@@ -17,5 +18,5 @@ def get_tasks_by_user(open_id, tasklist_guid):
     res = tasks_api.fetch({"tasklist_guid": tasklist_guid, "open_id": open_id, "page_size": 50})
     return res.get("items", []) if isinstance(res, dict) else []
   except Exception as e:
-    print(f"⚠️ 拉取用户 {open_id} 任务失败: {e}")
+    logger.warning(f"⚠️ 拉取用户 {open_id} 任务失败: {e}")
     return []

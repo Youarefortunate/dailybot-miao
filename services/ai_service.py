@@ -1,4 +1,5 @@
 import requests
+from loguru import logger
 from config import config
 
 def summarize_with_doubao(text):
@@ -16,5 +17,5 @@ def summarize_with_doubao(text):
     resp = requests.post(url, headers=headers, json=data)
     return resp.json().get("choices", [{}])[0].get("message", {}).get("content", "总结失败")
   except Exception as e:
-    print(f"❌ AI 总结出错: {e}")
+    logger.error(f"❌ AI 总结出错: {e}")
     return "总结失败"

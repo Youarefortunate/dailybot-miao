@@ -1,4 +1,5 @@
 import os
+from loguru import logger
 from dotenv import load_dotenv
 
 # 加载 .env 文件中的环境变量
@@ -50,7 +51,7 @@ class Config:
         required_fields = ["FEISHU_APP_ID", "FEISHU_APP_SECRET", "DOUBAO_API_KEY", "TARGET_CHAT_ID"]
         missing = [f for f in required_fields if not getattr(cls, f)]
         if missing:
-            print(f"缺少必要的配置项: {', '.join(missing)}")
+            logger.warning(f"缺少必要的配置项: {', '.join(missing)}")
             return False
         return True
 

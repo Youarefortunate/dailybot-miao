@@ -1,3 +1,4 @@
+from loguru import logger
 from .platform_manager import platform_manager
 
 
@@ -82,13 +83,13 @@ class BasePlatform:
 
         # 1. 检测 Token 过期 (身份认证类错误)
         if self._is_token_expired(response):
-            print(f"[{self.PLATFORM_NAME}] 检测到 Token 过期，尝试自动刷新...")
+            logger.warning(f"[{self.PLATFORM_NAME}] 检测到 Token 过期，尝试自动刷新...")
             # 获取刷新用的参数（通常是 open_id）
             auth_params = config.get("params", {}) if config.get("method") == "GET" else config.get("json", {})
             new_token = self.refresh_token(auth_params)
 
             if new_token:
-                print(f"[{self.PLATFORM_NAME}] Token 刷新成功，正在重新发起原始请求...")
+                logger.info(f"[{self.PLATFORM_NAME}] Token 刷新成功，正在重新发起原始请求...")
                 # 重新调用请求方法，config 已经在 refresh 后会被 set_request_interceptors 重新处理
                 return http_request.request(config)
 

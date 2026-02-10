@@ -2,6 +2,7 @@ import os
 import importlib
 import pkgutil
 import re
+from loguru import logger
 
 
 class PlatformManager:
@@ -51,7 +52,7 @@ class PlatformManager:
 
             self._discovered = True
         except Exception as e:
-            print(f"Platform discovery error: {e}")
+            logger.error(f"平台发现错误: {e}")
 
     def get_platform_class(self, name):
         self._ensure_discovered()

@@ -1,4 +1,5 @@
 import json
+from loguru import logger
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from api import apis
@@ -11,7 +12,7 @@ app = FastAPI()
 @app.get("/callback")
 def callback(code: str):
     """授权回调接口"""
-    print(f"📡 接收到授权回调，Code: {code[:10]}...")
+    logger.info(f"📡 接收到授权回调，Code: {code[:10]}...")
     token_api = use_request(apis.feishu_auth.get_access_token)
     try:
         data = token_api.fetch({"code": code})
@@ -21,17 +22,17 @@ def callback(code: str):
             refresh_token = data["refresh_token"]
 
             # 获取自建应用 token (tenant_access_token)
-            print(f"🔄 正在为用户 {open_id} 获取自建应用 Token...")
+            logger.info(f"🔄 正在为用户 {open_id} 获取自建应用 Token...")
             app_token = fetch_tenant_access_token()
 
             # 一起存入 token_store
             save_token(open_id, access_token, refresh_token, app_token=app_token)
             # 授权成功后发送精美通知卡片
-            print(f"✅ 授权成功，准备为用户 {open_id} 发送成功提示...")
+            logger.info(f"✅ 授权成功，准备为用户 {open_id} 发送成功提示...")
             send_success_card(open_id)
             return HTMLResponse("<h2>授权成功！请返回终端查看进度。</h2>")
     except Exception as e:
-        print(f"❌ 授权回调处理失败: {e}")
+        logger.error(f"❌ 授权回调处理失败: {e}")
         return HTMLResponse(f"<h2>授权失败: {e}</h2>")
     return HTMLResponse("<h2>授权失败：未获取到有效数据</h2>")
 
@@ -66,15 +67,15 @@ def send_success_card(open_id):
                 "headers": {"Authorization": f"Bearer {tenant_token}"},
             }
         )
-        print(f"✨ 已向用户 {open_id} 推送授权成功反馈卡片")
+        logger.info(f"✨ 已向用户 {open_id} 推送授权成功反馈卡片")
     except Exception as e:
-        print(f"⚠️ 推送授权成功反馈失败: {e}")
+        logger.warning(f"⚠️ 推送授权成功反馈失败: {e}")
 
 def send_auth_nudge():
     """主动推送授权引导卡片"""
     tenant_token = get_tenant_token()
     if not tenant_token:
-        print("❌ 无法获取机器人 Token，无法发送授权引导。")
+        logger.error("❌ 无法获取机器人 Token，无法发送授权引导。")
         return
 
     auth_url = (
@@ -104,6 +105,6 @@ def send_auth_nudge():
                 "headers": {"Authorization": f"Bearer {tenant_token}"},
             }
         )
-        print("🚀 已向群聊发送授权引导卡片")
+        logger.info("🚀 已向群聊发送授权引导卡片")
     except Exception as e:
-        print(f"❌ 发送引导卡片失败: {e}")
+        logger.error(f"❌ 发送引导卡片失败: {e}")

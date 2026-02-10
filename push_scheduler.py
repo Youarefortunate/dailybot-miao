@@ -1,3 +1,4 @@
+from loguru import logger
 from apscheduler.schedulers.blocking import BlockingScheduler
 import main
 import json
@@ -19,9 +20,9 @@ def job():
     """
     定时执行的任务函数
     """
-    print("[定时任务] 开始自动推送日报/周报...")
+    logger.info("[定时任务] 开始自动推送日报/周报...")
     # 先刷新所有用户的token
-    print("[定时任务] 刷新所有用户token...")
+    logger.info("[定时任务] 刷新所有用户token...")
     refresh_all_tokens()
     # 执行推送任务
     main.main()
@@ -29,5 +30,5 @@ def job():
 if __name__ == "__main__":
     scheduler = BlockingScheduler()
     scheduler.add_job(job, "cron", hour=18, minute=20)
-    print("定时推送服务已启动，每天18:20自动推送")
+    logger.info("定时推送服务已启动，每天18:20自动推送")
     scheduler.start()

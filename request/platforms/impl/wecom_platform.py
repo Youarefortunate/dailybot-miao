@@ -1,4 +1,5 @@
 import time
+from loguru import logger
 from api import apis
 from ..modules.base_platform import BasePlatform
 from ...hooks.use_request import use_request
@@ -75,7 +76,7 @@ class WecomPlatform(BasePlatform):
         global _WECOM_ACCESS_TOKEN, _WECOM_TOKEN_EXPIRES_AT
 
         if not self.corp_id or not self.corp_secret:
-            print("[WeCom] 缺少 corp_id 或 corp_secret，无法刷新 access_token")
+            logger.warning("[WeCom] 缺少 corp_id 或 corp_secret，无法刷新 access_token")
             return None
 
         try:
@@ -91,12 +92,12 @@ class WecomPlatform(BasePlatform):
                 _WECOM_ACCESS_TOKEN = access_token
                 _WECOM_TOKEN_EXPIRES_AT = time.time() + max(0, expires_in - 300)
 
-                print("[WeCom] access_token 刷新成功")
+                logger.info("[WeCom] access_token 刷新成功")
                 return access_token
 
-            print(f"[WeCom] 刷新 access_token 失败: {data}")
+            logger.error(f"[WeCom] 刷新 access_token 失败: {data}")
         except Exception as e:
-            print(f"[WeCom] 刷新 access_token 异常: {e}")
+            logger.error(f"[WeCom] 刷新 access_token 异常: {e}")
 
         return None
 

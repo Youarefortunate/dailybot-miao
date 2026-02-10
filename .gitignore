@@ -5,3 +5,5 @@ __pycache__/
 .vscode
 token.json
 .ruff_cache
+logs/
+js/

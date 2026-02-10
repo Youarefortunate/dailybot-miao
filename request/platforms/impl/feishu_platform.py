@@ -1,11 +1,14 @@
+from loguru import logger
 from api import apis
 from ..modules.base_platform import BasePlatform
 from token_store import (
     get_refresh_token,
     save_token,
     get_token as get_local_token,
+    get_app_token,
     fetch_tenant_access_token,
     refresh_user_token as store_refresh_user_token,
+    get_current_open_id,
 )
 from ...hooks.use_request import use_request
 
@@ -29,14 +32,20 @@ class FeishuPlatform(BasePlatform):
 
     def get_token(self, params=None):
         """
-        从 token_store 自动获取用户 Token
+        自动获取 Token。
+        - 如果 params 中包含 auth_type="app"，则返回自建应用 Token。
+        - 否则默认返回用户 access_token。
         """
         if self.token:
             return self.token
 
-        if isinstance(params, dict) and "open_id" in params:
-            return get_local_token(params["open_id"])
-        return None
+        open_id = get_current_open_id()
+        if not open_id:
+            return None
+
+        if isinstance(params, dict) and params.get("auth_type") == "app":
+            return get_app_token(open_id)
+        return get_local_token(open_id)
 
     def _is_token_expired(self, response):
         """
@@ -66,50 +75,28 @@ class FeishuPlatform(BasePlatform):
 
     def refresh_token(self, params=None):
         """
-        执行无感刷新：完全自闭环，使用 use_request
+        执行无感刷新：完全自闭环，使用 token_store 中封装的逻辑。
         """
-        if not isinstance(params, dict) or "open_id" not in params:
+        open_id = get_current_open_id()
+        if not open_id:
+            logger.warning("[Feishu] 刷新失败：未找到当前用户 open_id")
             return None
 
-        open_id = params["open_id"]
-        print(f"[Feishu] 正在为 {open_id} 进行自闭环无感刷新 (use_request)...")
+        logger.info(f"[Feishu] 正在为 {open_id} 进行自闭环无感刷新 (token_store)...")
 
         refresh_tk = get_refresh_token(open_id)
         if not refresh_tk:
-            print("[Feishu] 刷新失败：未找到有效 refresh_token")
+            logger.warning("[Feishu] 刷新失败：未找到有效 refresh_token")
             return None
 
         try:
-            # 1. 获取飞书自定义机器人token
-            tenant_tk = fetch_tenant_access_token()
-
-            if not tenant_tk:
-                print("[Feishu] 刷新失败：无法获取 tenant_access_token")
-                return None
-
-            # 2. 刷新用户令牌
-            refresh_req = use_request(apis.feishu_auth.refresh_user_token)
-            fetch_refresh = refresh_req.fetch
-
-            refresh_data = fetch_refresh(
-                {
-                    "grant_type": "refresh_token",
-                    "refresh_token": refresh_tk,
-                    "headers": {"Authorization": f"Bearer {tenant_tk}"},
-                }
-            )
-
-            # 注意：use_request 会根据 feishu 的模板自动解包 data 字段
-            new_token = refresh_data.get("access_token") if refresh_data else None
-
+            # 直接调用封装好的刷新逻辑
+            new_token = store_refresh_user_token(open_id, refresh_tk)
             if new_token:
-                # 3. 同步到本地存储
-                save_token(open_id, new_token, refresh_data.get("refresh_token"))
-                print("[Feishu] 自闭环刷新成功 (use_request)")
+                logger.info("[Feishu] 自闭环刷新成功 (token_store)")
                 return new_token
-
         except Exception as e:
-            print(f"[Feishu] 刷新过程中出现异常: {e}")
+            logger.error(f"[Feishu] 刷新过程中出现异常: {e}")
 
         return None
 
