@@ -4,12 +4,6 @@ def get_task_api():
     """
     return {
         "platform": "feishu",
-        # 获取清单任务列表
-        "get_tasks": {
-            "method": "GET",
-            "auth_type": "app",
-            "url": "/open-apis/task/v2/tasklists/{tasklist_guid}/tasks",
-        },
         # 获取任务评论列表
         "get_comments": {
             "method": "GET",

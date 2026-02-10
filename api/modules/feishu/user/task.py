@@ -4,6 +4,8 @@ def get_task_api():
     """
     return {
         "platform": "feishu",
-        # 获取指定用户任务列表
-        "get_tasks": "GET /open-apis/task/v2/tasks",
+        # 获取指定用户清单（单个）
+        "get_task": "GET /open-apis/task/v2/tasks",
+        # 获取清单任务列表
+        "get_tasks": "GET /open-apis/task/v2/tasklists/{tasklist_guid}/tasks",
     }
