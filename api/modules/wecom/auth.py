@@ -19,5 +19,3 @@ def get_wecom_auth_api():
             },
         },
     }
-
-

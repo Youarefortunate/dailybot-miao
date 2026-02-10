@@ -24,12 +24,12 @@ def _auto_ensure_loaded(func):
         # 获取函数签名
         sig = inspect.signature(func)
         params = list(sig.parameters.keys())
-        
+
         # 检查 open_id 参数
-        if 'open_id' in params:
+        if "open_id" in params:
             # 确定 open_id 在参数列表中的位置
-            open_id_index = params.index('open_id')
-            
+            open_id_index = params.index("open_id")
+
             # 如果 open_id 在位置参数中且为 None
             if open_id_index < len(args) and args[open_id_index] is None:
                 # 替换为当前用户的 open_id
@@ -37,9 +37,9 @@ def _auto_ensure_loaded(func):
                 args[open_id_index] = get_current_open_id()
                 args = tuple(args)
             # 如果 open_id 在关键字参数中且为 None
-            elif 'open_id' in kwargs and kwargs['open_id'] is None:
-                kwargs['open_id'] = get_current_open_id()
-        
+            elif "open_id" in kwargs and kwargs["open_id"] is None:
+                kwargs["open_id"] = get_current_open_id()
+
         return func(*args, **kwargs)
 
     return wrapper
@@ -68,7 +68,7 @@ def fetch_tenant_access_token():
     从飞书服务端请求最新的自建应用 token (tenant_access_token)。
     """
     try:
-        req = use_request(apis.feishu_auth.get_tenant_token)
+        req = use_request(apis.feishu_app_auth.get_tenant_token)
         data = req.fetch()
         token = data.get("tenant_access_token") if data else None
         if token:
@@ -149,7 +149,7 @@ def refresh_user_token(open_id, refresh_token, tenant_access_token=None):
             logger.warning(f"open_id {open_id} 刷新由于缺少应用 Token 而中止")
             return None
 
-        refresh_req = use_request(apis.feishu_auth.refresh_user_token)
+        refresh_req = use_request(apis.feishu_user_auth.refresh_user_token)
         data = refresh_req.fetch(
             {
                 "grant_type": "refresh_token",

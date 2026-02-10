@@ -16,7 +16,9 @@ class BasePlatform:
         if cls.PLATFORM_NAME != "unknown":
             platform_manager.register_platform(cls.PLATFORM_NAME, cls)
             if cls.URL_PATTERN:
-                platform_manager.register_url_pattern(cls.PLATFORM_NAME, cls.URL_PATTERN)
+                platform_manager.register_url_pattern(
+                    cls.PLATFORM_NAME, cls.URL_PATTERN
+                )
 
     def __init__(self, config=None):
         if config is None:
@@ -47,7 +49,11 @@ class BasePlatform:
         请求拦截器：自动注入 Auth Header
         """
         # 获取用于认证的参数（如 open_id）
-        auth_params = config.get("params", {}) if config.get("method") == "GET" else config.get("json", {})
+        auth_params = (
+            config.get("params", {})
+            if config.get("method") == "GET"
+            else config.get("json", {})
+        )
 
         # 自动获取 Token
         token = self.get_token(auth_params)
@@ -56,7 +62,7 @@ class BasePlatform:
                 config["headers"] = {}
             # 设置认证头
             auth_header = self.get_auth_header(token)
-            if auth_header:
+            if auth_header and "Authorization" not in config["headers"]:
                 config["headers"]["Authorization"] = auth_header
 
         # 设置平台特定的通用请求头
@@ -85,11 +91,17 @@ class BasePlatform:
         if self._is_token_expired(response):
             logger.warning(f"[{self.PLATFORM_NAME}] 检测到 Token 过期，尝试自动刷新...")
             # 获取刷新用的参数（通常是 open_id）
-            auth_params = config.get("params", {}) if config.get("method") == "GET" else config.get("json", {})
+            auth_params = (
+                config.get("params", {})
+                if config.get("method") == "GET"
+                else config.get("json", {})
+            )
             new_token = self.refresh_token(auth_params)
 
             if new_token:
-                logger.info(f"[{self.PLATFORM_NAME}] Token 刷新成功，正在重新发起原始请求...")
+                logger.info(
+                    f"[{self.PLATFORM_NAME}] Token 刷新成功，正在重新发起原始请求..."
+                )
                 # 重新调用请求方法，config 已经在 refresh 后会被 set_request_interceptors 重新处理
                 return http_request.request(config)
 
@@ -97,7 +109,9 @@ class BasePlatform:
         if 200 <= response.status_code < 300:
             return response
         else:
-            raise self.create_error(response.status_code, self._parse_error_data(response))
+            raise self.create_error(
+                response.status_code, self._parse_error_data(response)
+            )
 
     def _is_token_expired(self, response):
         """子类需实现此方法来判断 Token 是否过期"""
@@ -131,9 +145,15 @@ class BasePlatform:
         http_request.set_base_url(self.get_base_url())
 
         # 设置拦截器
-        http_request.set_req_interceptors(lambda config: self.set_request_interceptors(config))
+        http_request.set_req_interceptors(
+            lambda config: self.set_request_interceptors(config)
+        )
 
         http_request.set_res_interceptors(
-            lambda response, config: self.set_response_interceptors(response, config, http_request),
-            lambda error, config: self.set_error_interceptors(error, config, http_request),
+            lambda response, config: self.set_response_interceptors(
+                response, config, http_request
+            ),
+            lambda error, config: self.set_error_interceptors(
+                error, config, http_request
+            ),
         )

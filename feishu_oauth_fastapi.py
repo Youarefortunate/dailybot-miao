@@ -9,11 +9,12 @@ from token_store import save_token, fetch_tenant_access_token
 
 app = FastAPI()
 
+
 @app.get("/callback")
 def callback(code: str):
     """授权回调接口"""
     logger.info(f"📡 接收到授权回调，Code: {code[:10]}...")
-    token_api = use_request(apis.feishu_auth.get_access_token)
+    token_api = use_request(apis.feishu_user_auth.get_access_token)
     try:
         data = token_api.fetch({"code": code})
         if data and "access_token" in data:
@@ -36,9 +37,11 @@ def callback(code: str):
         return HTMLResponse(f"<h2>授权失败: {e}</h2>")
     return HTMLResponse("<h2>授权失败：未获取到有效数据</h2>")
 
+
 def get_tenant_token():
     """兼容性保留，内部调用封装后的逻辑"""
     return fetch_tenant_access_token()
+
 
 def send_success_card(open_id):
     """发送授权成功卡片"""
@@ -48,15 +51,29 @@ def send_success_card(open_id):
 
     card = {
         "config": {"wide_screen_mode": True},
-        "header": {"title": {"tag": "plain_text", "content": "🎊 授权成功"}, "template": "green"},
+        "header": {
+            "title": {"tag": "plain_text", "content": "🎊 授权成功"},
+            "template": "green",
+        },
         "elements": [
-            {"tag": "div", "text": {"tag": "lark_md", "content": "感谢您的授权！机器人现在可以代表您读取任务清单了。\n\n**后续流程：**\n- 机器人将自动检测到授权并开始生成日报。\n- 如果由于长时间不使用导致失效，您可以在群聊中再次点击授权按钮（无感刷新机制会尽量避免此情况）。"}},
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": "感谢您的授权！机器人现在可以代表您读取任务清单了。\n\n**后续流程：**\n- 机器人将自动检测到授权并开始生成日报。\n- 如果由于长时间不使用导致失效，您可以在群聊中再次点击授权按钮（无感刷新机制会尽量避免此情况）。",
+                },
+            },
             {"tag": "hr"},
-            {"tag": "note", "elements": [{"tag": "plain_text", "content": "您可以关闭此页面返回飞书。"}]}
+            {
+                "tag": "note",
+                "elements": [
+                    {"tag": "plain_text", "content": "您可以关闭此页面返回飞书。"}
+                ],
+            },
         ],
     }
 
-    req = use_request(apis.feishu_im.send_message)
+    req = use_request(apis.feishu_app_im.send_message)
     try:
         req.fetch(
             {
@@ -70,6 +87,7 @@ def send_success_card(open_id):
         logger.info(f"✨ 已向用户 {open_id} 推送授权成功反馈卡片")
     except Exception as e:
         logger.warning(f"⚠️ 推送授权成功反馈失败: {e}")
+
 
 def send_auth_nudge():
     """主动推送授权引导卡片"""
@@ -85,17 +103,33 @@ def send_auth_nudge():
 
     card = {
         "config": {"wide_screen_mode": True},
-        "header": {"title": {"tag": "plain_text", "content": "🔐 机器人需要您的授权"}, "template": "orange"},
+        "header": {
+            "title": {"tag": "plain_text", "content": "🔐 机器人需要您的授权"},
+            "template": "orange",
+        },
         "elements": [
-            {"tag": "div", "text": {"tag": "lark_md", "content": "检测到目前没有有效的用户授权，机器人无法读取任务详情。\n请点击下方按钮完成授权后，机器人将自动继续工作。"}},
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": "检测到目前没有有效的用户授权，机器人无法读取任务详情。\n请点击下方按钮完成授权后，机器人将自动继续工作。",
+                },
+            },
             {
                 "tag": "action",
-                "actions": [{"tag": "button", "text": {"tag": "plain_text", "content": "立即授权"}, "type": "primary", "url": auth_url}],
+                "actions": [
+                    {
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "立即授权"},
+                        "type": "primary",
+                        "url": auth_url,
+                    }
+                ],
             },
         ],
     }
 
-    req = use_request(apis.feishu_im.send_message)
+    req = use_request(apis.feishu_app_im.send_message)
     try:
         req.fetch(
             {
