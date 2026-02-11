@@ -36,7 +36,7 @@ class DoubaoAI(BaseAIProvider):
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_content},
                     ],
-                    "timeout": 60,
+                    "timeout": 180,  # 超时设定3分钟
                 }
             )
             # 由于 use_request 已经解包了 Result.data，res_data 现在就是原始的 choices 字典
@@ -51,10 +51,12 @@ class DoubaoAI(BaseAIProvider):
 
             if not content:
                 logger.warning(f"[{self.AI_PROVIDER_NAME}] 总结返回内容为空")
-                return "总结失败"
+                return "[]"
 
+            # 清理 Markdown 代码块标记，确保返回纯 JSON
+            content = content.replace("```json", "").replace("```", "").strip()
             return content
 
         except Exception as e:
             logger.error(f"[{self.AI_PROVIDER_NAME}] 总结过程出错: {e}")
-            return f"总结失败: {e}"
+            return "[]"

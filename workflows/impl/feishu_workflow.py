@@ -105,20 +105,36 @@ class FeishuWorkflow(BaseWorkflow):
 
     def on_report_success(self, summary: str, context: dict):
         """
-        更新飞书卡片为最终总结内容
+        更新飞书卡片为最终总结内容 (支持 JSON 结构化卡片)
         """
         message_id = context.get("message_id")
         headers = context.get("headers")
 
-        card = {
-            "header": {
-                "title": {"tag": "plain_text", "content": "📊 每日工作总结"},
-                "template": "blue",
-            },
-            "elements": [
-                {"tag": "div", "text": {"tag": "lark_md", "content": summary}}
-            ],
-        }
+        try:
+            # 尝试解析 JSON
+            data = json.loads(summary)
+            if not isinstance(data, list):
+                # 如果不是列表，可能是单条对象或错误格式，尝试包裹
+                data = [data] if isinstance(data, dict) else []
+
+            card = self._build_daily_card(data)
+        except Exception as e:
+            # 解析失败，回退到纯文本卡片
+            logger.warning(
+                f"[{self.WORKFLOW_NAME}] JSON 解析或卡片构建失败: {e}，回退到纯文本展示"
+            )
+            card = {
+                "header": {
+                    "title": {
+                        "tag": "plain_text",
+                        "content": "📊 每日工作总结 (格式异常)",
+                    },
+                    "template": "orange",
+                },
+                "elements": [
+                    {"tag": "div", "text": {"tag": "lark_md", "content": summary}}
+                ],
+            }
 
         if message_id:
             try:
@@ -137,6 +153,66 @@ class FeishuWorkflow(BaseWorkflow):
         else:
             # 备选方案：直接发送新消息
             self._send_raw(card, headers)
+
+    def _build_daily_card(self, items: list) -> dict:
+        """
+        构建飞书交互式卡片
+        """
+        if not items:
+            return {
+                "header": {
+                    "title": {"tag": "plain_text", "content": "📊 每日工作总结"},
+                    "template": "grey",
+                },
+                "elements": [
+                    {
+                        "tag": "div",
+                        "text": {"tag": "lark_md", "content": "今日暂无工作记录"},
+                    }
+                ],
+            }
+
+        # 提取日期（取第一条的日期或当天）
+        date_str = items[0].get("date", "今日")
+
+        elements = []
+        for item in items:
+            # 优先级颜色映射
+            priority = item.get("priority", "普通")
+            emoji = (
+                "🔴" if "紧急" in priority else ("🟡" if "重要" in priority else "🟢")
+            )
+
+            # 构建单条工作记录的 Block
+            content = f"**{item.get('content', '无描述')}**"
+            result = f"成果：{item.get('result', '进行中')}"
+            meta_info = f"🕒 {item.get('start_time', '')}~{item.get('end_time', '')} | {emoji} {priority} | 🏷️ {item.get('type', '其他')} | 🏢 {item.get('project', '其他')}"
+
+            elements.append(
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": f"{content}\n{result}\n<font color='grey'>{meta_info}</font>",
+                    },
+                }
+            )
+            elements.append({"tag": "hr"})
+
+        # 移除最后一条分割线
+        if elements and elements[-1]["tag"] == "hr":
+            elements.pop()
+
+        return {
+            "header": {
+                "title": {
+                    "tag": "plain_text",
+                    "content": f"📊 每日工作总结 {date_str}",
+                },
+                "template": "blue",
+            },
+            "elements": elements,
+        }
 
     def _send_raw(self, card, headers):
         if not config.FEISHU_TARGET_CHAT_ID:

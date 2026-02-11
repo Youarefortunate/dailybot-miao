@@ -74,6 +74,11 @@ def run_reporting_logic():
     if not raw_report:
         log.warning("📭 今日没有任何可汇报的数据。")
         return
+
+    log.info("📊 采集到以下原始报文内容：")
+    print("-" * 50)
+    print(raw_report)
+    print("-" * 50)
     log.info(f"📊 采集完成，准备请求 AI 总结...")
 
     # 2. 各平台起始反馈 (如发送占位卡片)
