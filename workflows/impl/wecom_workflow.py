@@ -1,6 +1,6 @@
 from loguru import logger
 from workflows.modules.base_workflow import BaseWorkflow
-from services.ai_service import summarize_text
+from providers import AIFactory
 from config import config
 
 
@@ -25,8 +25,13 @@ class WeComWorkflow(BaseWorkflow):
         执行 AI 总结逻辑
         """
         platform_config = config.get_platform(self.WORKFLOW_NAME)
-        provider = platform_config.get("ai_model", "doubao")
-        return summarize_text(raw_report, provider=provider)
+        provider_name = platform_config.get("ai_model", "doubao")
+
+        ai_instance = AIFactory.get_ai(provider_name)
+        if not ai_instance:
+            return "总结失败"
+
+        return ai_instance.summarize(raw_report)
 
     def on_report_success(self, summary: str, context: dict):
         # TODO: 调用企微 API 推送最终内容

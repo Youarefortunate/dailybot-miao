@@ -4,7 +4,7 @@ from api import apis
 from config import config
 from request.hooks import use_request
 from feishu_oauth_fastapi import send_auth_nudge, get_tenant_token
-from services.ai_service import summarize_text
+from providers import AIFactory
 from token_store import load_all_tokens
 from workflows.modules.base_workflow import BaseWorkflow
 
@@ -93,8 +93,13 @@ class FeishuWorkflow(BaseWorkflow):
         platform_config = config.get_platform(self.WORKFLOW_NAME)
         provider = platform_config.get("ai_model", "doubao")
 
-        logger.info(f"[{self.WORKFLOW_NAME}] 正在使用 {provider} 模型生成总结...")
-        return summarize_text(raw_report, provider=provider)
+        ai_instance = AIFactory.get_ai(provider)
+        if not ai_instance:
+            logger.error(f"[{self.WORKFLOW_NAME}] 未找到模型供应商: {provider}")
+            return "总结失败: 未找到模型供应商"
+
+        logger.info(f"[{self.WORKFLOW_NAME}] 正在调度 {provider} 模型生成总结...")
+        return ai_instance.summarize(raw_report)
 
     def on_report_success(self, summary: str, context: dict):
         """
