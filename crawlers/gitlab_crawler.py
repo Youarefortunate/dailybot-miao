@@ -88,7 +88,7 @@ class GitlabCrawler:
                     date_label = self._format_date_range(since, until)
                     logger.opt(colors=True).info(
                         f"📅 正在爬取仓库: <magenta>{repo_path}</magenta> "
-                        f"(分支: <yellow>{branch}</yellow>, 日期: <fg #87CEEB>{date_label}</fg>)"
+                        f"(分支: <yellow>{branch}</yellow>, 日期: <fg #87CEEB>{date_label}</fg #87CEEB>)"
                     )
 
                     try:
