@@ -1,321 +1,185 @@
-# 飞书任务自动日报/周报机器人
+# 🚀 Multi-Bot: 多平台智能自动化助手
 
-一个基于飞书API的智能任务管理机器人，能够自动读取团队成员的任务、评论，结合AI大模型生成结构化的日报和周报，并推送到指定飞书群聊。
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
+[![Architecture](https://img.shields.io/badge/architecture-Modular-orange.svg)]()
 
-## 功能特性
+> **Multi-Bot** 是一款工业级、高度可扩展的自动化办公助手框架。它能够跨平台采集数据（GitLab 提交记录、飞书任务等），利用尖端 AI 大模型进行深度总结，并精准推送至多元化终端（飞书、企业微信等）。
 
-- 🤖 **全自动化**：无需人工干预，自动获取所有已授权用户的任务
-- 👥 **多成员支持**：支持多个团队成员的任务统计和汇总
-- 📝 **智能总结**：基于豆包大模型AI，智能分析任务进展和评论
-- 📅 **定时推送**：支持定时自动推送日报/周报到指定群聊
-- 🔄 **Token自动刷新**：自动刷新用户访问令牌，确保长期稳定运行
-- 💬 **评论分析**：自动获取任务评论，提供更全面的工作进展信息
-- ☁️ **多部署方案**：支持本地部署和Cloudflare Worker云端部署
+---
 
-## 部署方案
+## ✨ 核心特性
 
-### 方案一：本地部署（推荐用于开发测试）
+- 🧩 **高度插件化**：爬虫 (Crawlers)、AI 供应商 (Providers)、推送工作流 (Workflows) 均实现完全解耦，支持秒级动态接入。
+- 🔍 **多源数据采集**：内置 GitLab 活跃度采集、飞书任务跟踪等模块，支持多账号、多仓库并行采集。
+- 🤖 **灵活 AI 驱动**：兼容豆包 (Doubao)、GPT 等主流大模型，支持通过 `AIFactory` 实现动态模型切换。
+- 🛡️ **工业级架构**：
+  - **统一响应契约**：全系统遵循 Spring Boot 风格的 `Result` 响应规范。
+  - **全局异常治理**：内置 `GlobalExceptionHandler` 与 `handle_logic_exception` 装饰器，确保系统健壮性。
+  - **无感 OAuth 流程**：完善的 Token 存储、自动刷新及请求重试机制。
+- ⚙️ **配置驱动**：全功能通过 `config.yaml` 灵活配置，无需修改核心代码即可调整业务规则。
 
-适合开发测试和小规模使用，需要自备服务器或本地环境。
+---
 
-### 方案二：Cloudflare Worker部署（推荐用于生产环境）
+## 🏗️ 系统架构
 
-适合生产环境使用，具有以下优势：
-- 🌐 **全球分布式**：Cloudflare Worker 在全球 200+ 个数据中心运行
-- ⚡ **高性能**：基于 V8 引擎，启动时间 < 1ms
-- 💰 **免费额度**：每天 100,000 次请求免费
-- 🔒 **安全可靠**：企业级安全防护
-- 📅 **定时触发**：支持 Cron 定时任务
-- 🗄️ **KV存储**：持久化存储用户Token
+项目采用“中心化发现，分布式实现”的架构模式：
 
-详细部署指南请参考：[Cloudflare Worker 部署指南](./CLOUDFLARE_DEPLOY.md)
+```mermaid
+graph TD
+    subgraph "Data Source (Crawlers)"
+        G[GitLab]
+        F[Feishu Task]
+        O[...Others]
+    end
 
-## 系统架构
+    subgraph "Core Engine"
+        M[Main Process]
+        DM[Dynamic Manager]
+        RM[Request Module]
+    end
 
+    subgraph "AI Brain (Providers)"
+        D[Doubao AI]
+        S[...Others]
+    end
+
+    subgraph "Delivery (Workflows)"
+        FW[Feishu Workflow]
+        WW[WeCom Workflow]
+        TW[...Others]
+    end
+
+    G & F & O --> M
+    M --> DM
+    DM --> D & S
+    D & S --> M
+    M --> FW & WW & TW
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   飞书OAuth2    │    │   任务数据获取   │    │   AI智能总结     │
-│   用户授权      │───▶│   评论数据获取   │───▶│   豆包大模型     │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │
-         ▼                       ▼                       ▼
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Token管理     │    │   数据分组处理   │    │   群聊推送      │
-│   自动刷新      │    │   按用户日期     │    │   定时任务      │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
+
+---
+
+## 📂 模块导览
+
+| 目录 | 职责说明 | 关键特性 |
+| :-- | :-- | :-- |
+| `crawlers/` | 数据采集模块 | 支持 GitLab/飞书任务，自动去重与时间窗口过滤 |
+| `providers/` | AI 供应商模块 | 统一定义 Prompt，支持不同模型的能力适配 |
+| `workflows/` | 推送工作流模块 | 支持卡片占位、消息原位更新、多平台分发 |
+| `request/` | 核心请求库 | 基于 `use_request` 钩子，支持自动拦截、Token 刷新与路径参数替换 |
+| `enums/` & `exceptions/` | 标准化模块 | 定义统一的状态码与业务异常处理逻辑 |
+
+---
+
+## ⚙️ 配置指南
+
+项目所有的核心逻辑均可通过 `config/config.yaml` 进行高度定制。
+
+### 1. 完整配置示例 (`config.yaml`)
+
+```yaml
+# ---------------------------------------------------------
+# 1. 平台基础配置 (决定推送终端的行为)
+# ---------------------------------------------------------
+platforms:
+  feishu:
+    ai_model: "doubao"            # 该工作流默认使用的 AI 总结模型
+    app_id: "cli_..."             # 飞书自建应用 ID
+    app_secret: "..."             # 飞书自建应用 Secret
+    target_chat_id: "oc_..."      # 目标接收群 ID
+    oauth_redirect_uri: "..."     # OAuth 回调地址
+    base_url: "https://open.feishu.cn"
+
+  wecom:
+    ai_model: "doubao"
+    corp_id: "ww..."              # 企业微信 CorpID
+    corp_secret: "..."            # 应用 Secret
+
+# ---------------------------------------------------------
+# 2. AI 模型供应商配置
+# ---------------------------------------------------------
+models:
+  doubao:
+    api_key: "..."                # 豆包 API Key
+    base_url: "..."               # 接口网关地址
+    model: "doubao-pro-4k"        # 使用的具体模型 ID
+
+# ---------------------------------------------------------
+# 3. 采集源 (爬虫) 配置
+# ---------------------------------------------------------
+repos:
+  gitlab:
+    token: "..."                  # GitLab Private Token 或 Personal Access Token
+    base_url: "https://git..."    # 您的 GitLab 地址
+    target_user: "username"       # 默认要统计提交记录的用户 (可选)
+    repos:
+      # 简易配置
+      - path: "group/project-a"
+        branch: "master"
+        name: "核心业务后台"      # 在日报中显示的别名
+      
+      # 进阶配置：指定爬取日期区间
+      - path: "frontend/ui-library"
+        branch: "develop"
+        name: "组件库"
+        crawl_dates:
+          - "2026-01-01, 2026-01-08"  # 支持日期区间
+          - "2026-02-10"              # 支持单日日期
+
+# ---------------------------------------------------------
+# 4. 全局调度开关
+# ---------------------------------------------------------
+# 启用的工作流，名称必须与 platforms 中的 key 对应
+enabled_workflows: ["feishu", "wecom"]
+
+# 日志级别: DEBUG, INFO, WARNING, ERROR
+log:
+  level: "INFO"
 ```
 
-## 快速开始
+### 2. 扩展配置深度解析
 
-### 本地部署
+#### 🧩 动态日期爬取 (`crawl_dates`)
+如果您需要补录旧的报告或进行周期性回顾，可以在仓库配置中添加 `crawl_dates` 数组。
+- **单日格式**: `"YYYY-MM-DD"`
+- **区间格式**: `"START_DATE, END_DATE"` (以英文逗号分隔)
+> [!TIP]
+> 如果省略该配置，爬虫会自动获取 **当前日期** 的提交记录。
 
-#### 1. 环境要求
+#### 🏷️ 仓库别名 (`name`)
+为了让生成的日报更具可读性，建议为每个仓库配置 `name` 字段。AI 在生成总结时会优先使用该别名，从而避免展示冗长的项目路径。
 
-- Python 3.7+
-- 飞书开发者账号
-- 豆包大模型API密钥
+#### 🔄 多工作流并行 (`enabled_workflows`)
+系统支持同时向多个终端推送。例如，您可以配置 `enabled_workflows: ["feishu", "wecom"]`，系统会为 GitLab 的同一采集结果，分别触发飞书和企业微信的总结与推送流程。
 
-#### 2. 安装依赖
+---
+
+## 🛠️ 高级用法
+
+### 统一异常处理范式
+在任何业务方法中，您只需抛出 `BusinessException` 或使用 `@handle_logic_exception`：
+
+```python
+from exceptions.base import BusinessException
+from exceptions.handler import handle_logic_exception
+
+@handle_logic_exception
+def process_data():
+    if not data:
+        raise BusinessException(msg="采集数据为空")
+```
+
+---
+
+## 🚀 快速开始
 
 ```bash
-# 创建虚拟环境
+# 初始化环境
 python -m venv .venv
-
-# 激活虚拟环境
-# Windows
-.venv\Scripts\activate
-# Linux/Mac
 source .venv/bin/activate
-
-# 安装依赖包
 pip install -r requirements.txt
-```
 
-#### 3. 飞书应用配置
-
-1. 登录[飞书开放平台](https://open.feishu.cn/)
-2. 创建应用，获取 `app_id` 和 `app_secret`
-3. 配置应用权限：
-   - `task:read` - 读取任务权限
-   - `contact:read` - 读取用户信息权限
-   - `message:send` - 发送消息权限
-4. 发布应用
-
-#### 4. 配置文件
-
-创建 `config.py` 文件：
-
-```python
-class config:
-    # 飞书应用配置
-    FEISHU_APP_ID = "your_app_id"
-    FEISHU_APP_SECRET = "your_app_secret"
-    
-    # 任务清单ID
-    TASKLIST_GUID = "your_tasklist_guid"
-    
-    # 目标群聊ID
-    TARGET_CHAT_ID = "your_chat_id"
-    
-    # 豆包大模型配置
-    DOUBAO_API_KEY = "your_doubao_api_key"
-    DOUBAO_BASE_URL = "https://api.doubao.com/v1/chat/completions"
-    DOUBAO_MODEL = "doubao-pro"
-```
-
-#### 5. 使用方法
-
-```bash
-# 1. 用户授权
-python auth_server.py
-
-# 2. 手动测试
+# 运行系统
 python main.py
-
-# 3. 定时推送
-python push_scheduler.py
 ```
 
-### Cloudflare Worker部署
-
-#### 1. 安装Wrangler CLI
-
-```bash
-npm install -g wrangler
-```
-
-#### 2. 登录Cloudflare
-
-```bash
-wrangler login
-```
-
-#### 3. 创建KV命名空间
-
-```bash
-wrangler kv:namespace create "TOKEN_STORE"
-wrangler kv:namespace create "TOKEN_STORE" --preview
-```
-
-#### 4. 配置环境变量
-
-在Cloudflare Dashboard中设置环境变量：
-- `FEISHU_APP_ID`
-- `FEISHU_APP_SECRET`
-- `TASKLIST_GUID`
-- `TARGET_CHAT_ID`
-- `DOUBAO_API_KEY`
-
-#### 5. 部署
-
-```bash
-wrangler deploy
-```
-
-#### 6. 配置定时触发器
-
-在Cloudflare Dashboard中配置Cron触发器：
-```bash
-# 每天上午9点执行
-0 9 * * *
-```
-
-详细步骤请参考：[Cloudflare Worker 部署指南](./CLOUDFLARE_DEPLOY.md)
-
-## 文件结构
-
-```
-FeishuBot/
-├── README.md                    # 项目说明文档
-├── CLOUDFLARE_DEPLOY.md         # Cloudflare Worker部署指南
-├── config.py                    # 配置文件
-├── main.py                      # 主程序（本地部署）
-├── auth_server.py               # 用户授权服务（本地部署）
-├── token_store.py               # Token管理（本地部署）
-├── push_scheduler.py            # 定时推送服务（本地部署）
-├── worker.js                    # Cloudflare Worker主程序
-├── wrangler.toml                # Cloudflare Worker配置
-├── auth.html                    # 授权页面（Cloudflare Worker）
-├── token.json                   # 用户Token存储（自动生成）
-└── requirements.txt             # 依赖包列表
-```
-
-## 核心功能详解
-
-### 任务数据获取
-
-- 使用飞书任务API获取指定任务清单下的所有任务
-- 支持分页获取，确保获取完整数据
-- 自动处理任务分配者、关注者等角色信息
-
-### 评论数据获取
-
-- 优先使用任务分配者的访问令牌获取评论
-- 避免权限问题导致的评论获取失败
-- 支持多用户评论的完整获取
-
-### AI智能总结
-
-- 基于豆包大模型进行任务内容分析
-- 生成结构化的日报和周报格式
-- 包含任务进展、计划、描述摘要等信息
-
-### Token自动管理
-
-- 自动刷新过期的访问令牌
-- 支持多用户Token的批量管理
-- 确保定时任务的稳定运行
-
-## 输出示例
-
-### 原始数据输出
-```
-【张三】
-所有任务：
-- 完成用户界面设计（✅已完成，日期:2024-01-15）
-  描述：设计新的用户登录界面
-  评论：设计稿已通过评审 | 需要调整按钮样式
-
-- 数据库优化（❌未完成，日期:2024-01-20）
-  描述：优化查询性能
-  评论：正在分析慢查询日志
-```
-
-### AI总结输出
-```
-📊 团队日报 - 2024年1月15日
-
-👤 张三
-✅ 已完成：
-• 用户界面设计：设计稿已通过评审，需要调整按钮样式
-
-🔄 进行中：
-• 数据库优化：正在分析慢查询日志，预计1月20日完成
-
-📋 今日计划：
-• 继续数据库优化工作
-• 调整UI设计中的按钮样式
-```
-
-## 故障排除
-
-### 常见问题
-
-1. **Token过期**
-   - 系统会自动刷新Token
-   - 如果刷新失败，需要重新授权用户
-
-2. **任务获取失败**
-   - 检查任务清单ID是否正确
-   - 确认用户是否有任务读取权限
-
-3. **评论获取失败**
-   - 检查任务分配者的Token是否有效
-   - 确认用户是否有评论读取权限
-
-4. **推送失败**
-   - 检查群聊ID是否正确
-   - 确认机器人是否已加入群聊
-
-### 调试模式
-
-在 `main.py` 中可以看到详细的调试输出，包括：
-- API请求和响应
-- 任务和评论获取过程
-- 数据处理和分组结果
-
-## 扩展功能
-
-### 自定义推送时间
-
-#### 本地部署
-修改 `push_scheduler.py` 中的定时配置：
-
-```python
-# 每天18:30推送
-scheduler.add_job(job, 'cron', hour=18, minute=30)
-
-# 每周一9:00推送周报
-scheduler.add_job(job, 'cron', day_of_week='mon', hour=9, minute=0)
-```
-
-#### Cloudflare Worker部署
-在Cloudflare Dashboard中修改Cron触发器：
-
-```bash
-# 每天18:30推送
-30 18 * * *
-
-# 每周一9:00推送周报
-0 9 * * 1
-```
-
-### 自定义AI总结格式
-
-修改AI提示词，定制总结格式和内容。
-
-### 多任务清单支持
-
-扩展代码支持多个任务清单的并行处理。
-
-## 成本对比
-
-| 部署方案 | 成本 | 适用场景 |
-|----------|------|----------|
-| 本地部署 | 服务器成本 | 开发测试、小规模使用 |
-| Cloudflare Worker | 免费额度充足 | 生产环境、大规模使用 |
-
-Cloudflare Worker免费额度：
-- 每天 100,000 次请求
-- 每天 10,000,000 CPU-milliseconds
-- 每天 100,000 次KV读取，1,000 次写入
-
-## 贡献指南
-
-欢迎提交Issue和Pull Request来改进项目！
-
-## 联系方式
-
-**邮箱**: wanwindy@163.com
-
-如有问题或建议，请通过Issue联系。 
