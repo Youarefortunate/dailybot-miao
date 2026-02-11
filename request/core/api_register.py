@@ -194,8 +194,20 @@ class ApiRegister:
                 if not p:
                     return res
 
-                # 提取控制类字段并透传
+                # 1. 路径参数处理 (兼容 {id} 和 :id)
+                url = res.get("url", "")
                 p_remain = p.copy() if isinstance(p, dict) else p
+                if isinstance(p_remain, dict) and url:
+                    # 匹配 {key} 或 :key
+                    keys = re.findall(r"\{([\w\-]+)\}|:([\w\-]+)", url)
+                    for k_brace, k_colon in keys:
+                        k = k_brace or k_colon
+                        if k in p_remain:
+                            val = str(p_remain.pop(k))
+                            url = url.replace(f"{{{k}}}", val).replace(f":{k}", val)
+                    res["url"] = url
+
+                # 2. 提取配置类字段并透传
                 if isinstance(p_remain, dict):
                     method = res.get("method", "GET").upper()
                     # 业务参数默认存放字段

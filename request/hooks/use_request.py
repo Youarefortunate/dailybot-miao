@@ -1,4 +1,5 @@
 from ..core.dot_dict import DotDict
+from exceptions.result import Result as ApiResponse
 
 
 class RequestState:
@@ -34,6 +35,16 @@ def use_request(api, config=None):
 
             # 响应结果
             result = api(*args, **kwargs)
+
+            # 如果已经是 Result 对象（由 BasePlatform 拦截器封装），则直接处理
+            if isinstance(result, ApiResponse):
+                state.code = result.code
+                state.message = result.msg
+                state.data = result.data
+                if not result.is_success():
+                    state.error = result.msg
+                    raise Exception(result.msg)
+                return state.data
 
             # 获取平台定义的响应模板，如果没有则使用默认模板
             template = getattr(

@@ -12,6 +12,7 @@ from token_store import load_all_tokens
 from feishu_oauth_fastapi import app, send_auth_nudge, get_tenant_token
 from crawlers import CrawlerFactory
 from workflows import WorkflowFactory
+from exceptions import handle_logic_exception
 
 
 def collect_all_reports():
@@ -51,6 +52,7 @@ def collect_all_reports():
     return report_text
 
 
+@handle_logic_exception
 def run_reporting_logic():
     """多平台并行工作流逻辑：采集 → 平台反馈开始 → AI 总结 → 平台更新结果"""
     log.info("🎬 开始执行报告生成流程...")
@@ -82,13 +84,8 @@ def run_reporting_logic():
 
     # 3. 各平台独立进行 AI 总结与分发最终结果
     for wf, ctx in wf_contexts:
-        try:
-            summary = wf.summarize(raw_report)
-            wf.on_report_success(summary, ctx)
-        except Exception as e:
-            error_msg = str(e)
-            log.error(f"❌ [{wf.WORKFLOW_NAME}] 总结过程出错: {error_msg}")
-            wf.on_report_failure(error_msg, ctx)
+        summary = wf.summarize(raw_report)
+        wf.on_report_success(summary, ctx)
 
 
 def main():

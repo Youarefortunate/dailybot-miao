@@ -12,6 +12,7 @@ from token_store import (
     get_current_open_id,
 )
 from ...hooks.use_request import use_request
+from exceptions.result import Result
 
 
 class FeishuPlatform(BasePlatform):
@@ -114,53 +115,24 @@ class FeishuPlatform(BasePlatform):
 
     def set_response_interceptors(self, response, config, http_request):
         """
-        飞书响应拦截器：在基类逻辑基础上，增加对飞书业务错误码的检测。
-        飞书 API 即使出现业务错误也可能返回 HTTP 200，需要额外检查 JSON body 中的 code 字段。
+        飞书响应拦截器：调用基类逻辑实现通用解析，并增加飞书特有风控码检测。
         """
-        response.response_template = self.response_template
+        # 调用基类实现（处理 Token 过期、HTTP 状态码、以及 Result 对象转换）
+        res = super().set_response_interceptors(response, config, http_request)
 
-        # 1. 先检测 Token 过期
-        if self._is_token_expired(response):
-            logger.warning(f"[{self.PLATFORM_NAME}] 检测到 Token 过期，尝试自动刷新...")
-            auth_params = (
-                config.get("params", {})
-                if config.get("method") == "GET"
-                else config.get("json", {})
-            )
-            new_token = self.refresh_token(auth_params)
-            if new_token:
-                logger.info(
-                    f"[{self.PLATFORM_NAME}] Token 刷新成功，正在重新发起原始请求..."
+        # 飞书特有的业务错误码深度检查 (风控场景)
+        if isinstance(res, Result) and not res.is_success():
+            blocked_reason = self.BLOCKED_CODES.get(res.code)
+            if blocked_reason:
+                logger.error(
+                    f"[{self.PLATFORM_NAME}] 🚫 {blocked_reason} (code={res.code}, msg={res.msg})"
                 )
-                return http_request.request(config)
+                raise self.create_error(
+                    res.code,
+                    {"msg": blocked_reason, "code": res.code, "raw_msg": res.msg},
+                )
 
-        # 2. 处理 HTTP 非 2xx 错误
-        if not (200 <= response.status_code < 300):
-            raise self.create_error(
-                response.status_code, self._parse_error_data(response)
-            )
-
-        # 3. 检测飞书业务错误码（HTTP 200 但 code != 0 的情况）
-        try:
-            data = response.json()
-            code = data.get("code")
-            msg = data.get("msg", "") or data.get("message", "")
-
-            if code and code != 0:
-                # 检查是否为风控/被标记类错误
-                blocked_reason = self.BLOCKED_CODES.get(code)
-                if blocked_reason:
-                    logger.error(
-                        f"[{self.PLATFORM_NAME}] 🚫 {blocked_reason} (code={code}, msg={msg})"
-                    )
-                    raise self.create_error(
-                        code, {"msg": blocked_reason, "code": code, "raw_msg": msg}
-                    )
-        except ValueError:
-            # JSON 解析失败，忽略
-            pass
-
-        return response
+        return res
 
     def get_auth_header(self, token):
         return f"Bearer {token}"

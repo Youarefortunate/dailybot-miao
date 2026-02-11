@@ -1,5 +1,7 @@
 from loguru import logger
 from .platform_manager import platform_manager
+from exceptions.result import Result
+from enums.result_code import ResultCode
 
 
 class BasePlatform:
@@ -107,11 +109,49 @@ class BasePlatform:
 
         # 2. 处理常规响应
         if 200 <= response.status_code < 300:
-            return response
+            # 尝试根据模板解析为 Result 对象
+            try:
+                # 检查响应内容类型，非 JSON 直接包装
+                if "application/json" not in response.headers.get("Content-Type", ""):
+                    return Result.success(data=response.text)
+
+                raw_data = response.json()
+
+                # 如果 raw_data 是列表（如 GitLab Commits），直接作为数据返回
+                if isinstance(raw_data, list):
+                    return Result.success(data=raw_data)
+
+                # 如果不是字典，直接转换
+                if not isinstance(raw_data, dict):
+                    return Result.success(data=raw_data)
+
+                # 获取目标字段名并提取数据
+                code_key = self.response_template.get("code")
+                data_key = self.response_template.get("data")
+                msg_key = self.response_template.get("message", "message")
+
+                # 提取数据：优先从 data_key 获取，不存在则使用全量数据
+                p_code = raw_data.get(code_key) if code_key else 0
+                p_msg = raw_data.get(msg_key, "success") if msg_key else "success"
+
+                if data_key and data_key in raw_data:
+                    p_data = raw_data.get(data_key)
+                else:
+                    p_data = raw_data
+
+                # 情况 A：业务逻辑成功
+                if p_code in [0, 200, "0", None]:
+                    return Result.success(data=p_data, msg=p_msg)
+                # 情况 B：业务逻辑异常
+                else:
+                    return Result.fail(code=p_code, msg=p_msg, data=p_data)
+
+            except Exception as e:
+                logger.error(f"[{self.PLATFORM_NAME}] 响应解析失败: {e}")
+                return Result.success(data=response.text)
         else:
-            raise self.create_error(
-                response.status_code, self._parse_error_data(response)
-            )
+            error_data = self._parse_error_data(response)
+            raise self.create_error(response.status_code, error_data)
 
     def _is_token_expired(self, response):
         """子类需实现此方法来判断 Token 是否过期"""
@@ -131,11 +171,16 @@ class BasePlatform:
 
     def create_error(self, status, data):
         message_key = self.response_template.get("message", "message")
+        code_key = self.response_template.get("code", "code")
+
         message = data.get(message_key) if isinstance(data, dict) else str(data)
+        biz_code = data.get(code_key) if isinstance(data, dict) else status
+
         err = Exception(message or f"HTTP {status} Error")
         err.status = status
+        err.biz_code = biz_code
         err.data = data
-        err.platform = self.name.lower()
+        err.platform = self.PLATFORM_NAME
         return err
 
     def setup_request(self, http_request):

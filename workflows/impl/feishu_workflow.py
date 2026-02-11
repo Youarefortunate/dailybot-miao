@@ -76,7 +76,9 @@ class FeishuWorkflow(BaseWorkflow):
                     "headers": headers,
                 }
             )
-            message_id = res.get("data", {}).get("message_id")
+            # 此时 res 是已经解包后的 data 部分 (字典)
+            message_id = res.get("message_id") if res else None
+
             if not message_id:
                 logger.warning(f"[{self.WORKFLOW_NAME}] 无法获取占位卡片 message_id。")
 

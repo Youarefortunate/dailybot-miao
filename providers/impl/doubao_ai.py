@@ -39,9 +39,15 @@ class DoubaoAI(BaseAIProvider):
                     "timeout": 60,
                 }
             )
-            content = (
-                res_data.get("choices", [{}])[0].get("message", {}).get("content", "")
-            )
+            # 由于 use_request 已经解包了 Result.data，res_data 现在就是原始的 choices 字典
+            if isinstance(res_data, dict) or hasattr(res_data, "get"):
+                content = (
+                    res_data.get("choices", [{}])[0]
+                    .get("message", {})
+                    .get("content", "")
+                )
+            else:
+                content = str(res_data)
 
             if not content:
                 logger.warning(f"[{self.AI_PROVIDER_NAME}] 总结返回内容为空")
