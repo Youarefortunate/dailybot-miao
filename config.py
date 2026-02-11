@@ -119,6 +119,17 @@ class Config:
         return list(repos_cfg.keys())
 
     @classmethod
+    def get_platform(cls, platform_name: str) -> dict:
+        """
+        根据平台名称获取其在 platforms 分类下的所有配置
+        """
+        platforms_cfg = _YAML_CONFIG.get("platforms", {})
+        platform_data = platforms_cfg.get(platform_name)
+        if isinstance(platform_data, dict):
+            return platform_data
+        return {}
+
+    @classmethod
     def validate(cls):
         """
         验证必要的配置项是否存在

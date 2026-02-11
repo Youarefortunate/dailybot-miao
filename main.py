@@ -10,10 +10,7 @@ from config import config
 from request.hooks import use_request
 from token_store import load_all_tokens
 from feishu_oauth_fastapi import app, send_auth_nudge, get_tenant_token
-from services.ai_service import summarize_with_doubao
 from crawlers import CrawlerFactory
-
-
 from workflows import WorkflowFactory
 
 
@@ -58,7 +55,7 @@ def run_reporting_logic():
     """多平台并行工作流逻辑：采集 → 平台反馈开始 → AI 总结 → 平台更新结果"""
     log.info("🎬 开始执行报告生成流程...")
 
-    # 0. 加载启用的工作流
+    # 0. 加载启用的工作流，默认启动feishu
     enabled_workflow_names = getattr(config, "ENABLED_WORKFLOWS", ["feishu"])
     active_workflows = []
     for wf_name in enabled_workflow_names:
@@ -83,21 +80,14 @@ def run_reporting_logic():
         ctx = wf.on_report_start(raw_report)
         wf_contexts.append((wf, ctx))
 
-    # 3. AI 总结 (核心耗时操作，仅执行一次)
-    log.info("🤖 正在请求 AI 总结...")
-    summary = None
-    error_msg = None
-    try:
-        summary = summarize_with_doubao(raw_report)
-    except Exception as e:
-        error_msg = str(e)
-        log.error(f"❌ AI 总结失败: {error_msg}")
-
-    # 4. 各平台分发最终结果
+    # 3. 各平台独立进行 AI 总结与分发最终结果
     for wf, ctx in wf_contexts:
-        if summary:
+        try:
+            summary = wf.summarize(raw_report)
             wf.on_report_success(summary, ctx)
-        else:
+        except Exception as e:
+            error_msg = str(e)
+            log.error(f"❌ [{wf.WORKFLOW_NAME}] 总结过程出错: {error_msg}")
             wf.on_report_failure(error_msg, ctx)
 
 

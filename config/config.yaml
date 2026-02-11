@@ -2,6 +2,7 @@
 platforms:
   # 飞书
   feishu:
+    ai_model: "doubao"  # 该平台使用的总结模型
     app_id: ""
     app_secret: ""
     bot_token: ""
@@ -13,6 +14,7 @@ platforms:
     base_url: "https://open.feishu.cn"
   # 企业微信
   wecom:
+    ai_model: "doubao"
     corp_id: ""
     corp_secret: ""
 

@@ -34,15 +34,22 @@ class BaseWorkflow(ABC):
         return {}
 
     @abstractmethod
+    def summarize(self, raw_report: str) -> str:
+        """
+        执行 AI 总结逻辑
+        """
+        pass
+
+    @abstractmethod
     def on_report_success(self, summary: str, context: dict):
         """
         成功阶段：AI 总结成功后执行（如更新最终内容）。
         """
         pass
 
-    @abstractmethod
     def on_report_failure(self, error_msg: str, context: dict):
         """
-        失败阶段：处理异常情况。
+        失败阶段：处理异常情况（默认行为可由子类覆盖）。
         """
-        pass
+        failure_msg = f"⚠️ AI 总结服务异常\n> 错误原因: {error_msg}"
+        self.on_report_success(failure_msg, context)

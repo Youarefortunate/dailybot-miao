@@ -4,6 +4,7 @@ from api import apis
 from config import config
 from request.hooks import use_request
 from feishu_oauth_fastapi import send_auth_nudge, get_tenant_token
+from services.ai_service import summarize_text
 from token_store import load_all_tokens
 from workflows.modules.base_workflow import BaseWorkflow
 
@@ -84,6 +85,17 @@ class FeishuWorkflow(BaseWorkflow):
             logger.error(f"[{self.WORKFLOW_NAME}] 发送占位卡片失败: {e}")
             return {}
 
+    def summarize(self, raw_report: str) -> str:
+        """
+        使用配置指定的模型进行总结
+        """
+        # 获取飞书平台配置的模型，默认为 doubao
+        platform_config = config.get_platform(self.WORKFLOW_NAME)
+        provider = platform_config.get("ai_model", "doubao")
+
+        logger.info(f"[{self.WORKFLOW_NAME}] 正在使用 {provider} 模型生成总结...")
+        return summarize_text(raw_report, provider=provider)
+
     def on_report_success(self, summary: str, context: dict):
         """
         更新飞书卡片为最终总结内容
@@ -118,22 +130,6 @@ class FeishuWorkflow(BaseWorkflow):
         else:
             # 备选方案：直接发送新消息
             self._send_raw(card, headers)
-
-    def on_report_failure(self, error_msg: str, context: dict):
-        """
-        报告 AI 总结失败
-        """
-        failure_msg = f"⚠️ AI 总结服务异常\n> 内部原因: {error_msg}"
-        card = {
-            "header": {
-                "title": {"tag": "plain_text", "content": "❌ 总结生成失败"},
-                "template": "red",
-            },
-            "elements": [
-                {"tag": "div", "text": {"tag": "lark_md", "content": failure_msg}}
-            ],
-        }
-        self.on_report_success(failure_msg, context)  # 复用更新/发送逻辑
 
     def _send_raw(self, card, headers):
         if not config.FEISHU_TARGET_CHAT_ID:
