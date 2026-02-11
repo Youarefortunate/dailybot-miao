@@ -45,6 +45,9 @@ repos:
         branch: "test"
         name: "农融易后台管理系统"
 
+# 启用的工作流，名称要和 platforms 中的 key 对应
+enabled_workflows: ["feishu"]
+
 # 通用配置（无分类前缀）
 log:
   level: "INFO"
