@@ -66,6 +66,7 @@ def save_token(open_id, access_token, refresh_token, app_token=None):
 def fetch_tenant_access_token():
     """
     从飞书服务端请求最新的自建应用 token (tenant_access_token)。
+    成功返回 token 字符串，失败时抛出异常让调用方处理。
     """
     try:
         req = use_request(apis.feishu_app_auth.get_tenant_token)
@@ -74,10 +75,10 @@ def fetch_tenant_access_token():
         if token:
             logger.info(f"✅ 成功获取最新的自建应用 Token: {token[:10]}...")
             return token
-        logger.error("❌ 获取自建应用 Token 失败：响应数据为空或缺失字段")
+        raise Exception("获取自建应用 Token 失败：响应数据为空或缺失字段")
     except Exception as e:
         logger.error(f"❌ 获取自建应用 Token 异常: {e}")
-    return None
+        raise
 
 
 def _ensure_loaded(force=False):
@@ -160,7 +161,10 @@ def refresh_user_token(open_id, refresh_token, tenant_access_token=None):
 
         if data and "access_token" in data:
             # 获取最新的应用 token 一并存入，确保存储的是最新的
-            new_app_token = fetch_tenant_access_token() or tenant_access_token
+            try:
+                new_app_token = fetch_tenant_access_token()
+            except Exception:
+                new_app_token = tenant_access_token
             save_token(
                 open_id,
                 data["access_token"],

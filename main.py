@@ -22,7 +22,7 @@ def collect_task_report(open_ids):
 
     all_tasks = []
     for open_id in open_ids:
-        tasks = get_tasks_by_user(open_id, config.TASKLIST_GUID)
+        tasks = get_tasks_by_user(open_id, config.FEISHU_TASKLIST_GUID)
         if tasks:
             all_tasks.extend(tasks)
 
@@ -142,8 +142,8 @@ def run_reporting_logic():
         summary = raw_report
 
     # ===== 第三阶段：推送到飞书群聊 =====
-    if not config.TARGET_CHAT_ID:
-        log.warning("未配置 TARGET_CHAT_ID，推送已跳过。")
+    if not config.FEISHU_TARGET_CHAT_ID:
+        log.warning("未配置 FEISHU_TARGET_CHAT_ID，推送已跳过。")
         return
 
     tenant_token = get_tenant_token()
@@ -158,7 +158,7 @@ def run_reporting_logic():
     msg_req = use_request(apis.feishu_app_im.send_message)
     msg_req.fetch(
         {
-            "receive_id": config.TARGET_CHAT_ID,
+            "receive_id": config.FEISHU_TARGET_CHAT_ID,
             "content": json.dumps(card),
             "msg_type": "interactive",
             "headers": {"Authorization": f"Bearer {tenant_token}"},
@@ -193,7 +193,9 @@ def main():
 
         if not nudge_sent:
             log.info("🔍 未发现有效授权，正在发送引导卡片...")
-            send_auth_nudge()
+            success, reason = send_auth_nudge()
+            if not success:
+                return
             nudge_sent = True
             log.info(f"⏳ 等待用户授权中 (最长等待 {timeout_seconds}s)...")
 

@@ -26,7 +26,7 @@ class GitlabCrawler:
         now = datetime.now(timezone(timedelta(hours=8)))
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
 
-        user_to_filter = target_user or config.TARGET_GIT_USER
+        user_to_filter = target_user or config.GITLAB_TARGET_USER
 
         for repo in config.GITLAB_REPOS:
             repo_path = repo["path"]

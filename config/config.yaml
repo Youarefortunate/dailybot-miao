@@ -1,0 +1,42 @@
+# 平台配置
+platforms:
+  # 飞书
+  feishu:
+    app_id: ""
+    app_secret: ""
+    bot_token: ""
+    target_chat_id: ""
+    tasklist_guid: ""
+    oauth_redirect_uri: "http://127.0.0.1:8001/callback"
+    standup_time: "09:00"
+    standup_timezone: "Asia/Shanghai"
+    base_url: "https://open.feishu.cn"
+  # 企业微信
+  wecom:
+    corp_id: ""
+    corp_secret: ""
+
+# AI 模型配置
+models:
+  doubao:
+    api_key: ""
+    base_url: ""
+    model: ""
+
+# 代码仓库配置
+repos:
+  gitlab:
+    token: "U6Die4ueDJjypN_VFGYf"
+    base_url: "http://git.b2bwings.com"
+    target_user: "liangan"
+    repos:
+      - path: "frontend_b2bwings/b2b-wings-composite"
+        branch: "test"
+      - path: "frontend_b2bwings/b2b-wings-easyloan-mini"
+        branch: "master"
+      - path: "frontend_b2bwings/b2b-wings-easyloan-admin"
+        branch: "test"
+
+# 通用配置（无分类前缀）
+log:
+  level: "INFO"

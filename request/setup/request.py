@@ -14,9 +14,9 @@ def setup_request(options=None, cb=None):
     if options is None:
         options = {}
 
-    # 默认值完全从全局 config 中获取
-    platform_name = options.get("platform", config.DEFAULT_PLATFORM)
-    base_url = options.get("baseURL", config.DEFAULT_BASE_URL)
+    # 默认值完全从全局 config 中获取（自动从 YAML 生成的常量）
+    platform_name = options.get("platform", config.REQUEST_DEFAULT_PLATFORM)
+    base_url = options.get("baseURL", config.REQUEST_DEFAULT_BASE_URL)
 
     # 将 base_url 注入 options 中供平台初始化使用
     options["baseURL"] = base_url

@@ -90,15 +90,27 @@ def send_success_card(open_id):
 
 
 def send_auth_nudge():
-    """主动推送授权引导卡片"""
-    tenant_token = get_tenant_token()
+    """
+    主动推送授权引导卡片。
+    返回 (success, error_reason)：
+    - success=True 表示发送成功
+    - success=False 时 error_reason 包含具体失败原因
+    """
+    try:
+        tenant_token = get_tenant_token()
+    except Exception as e:
+        reason = str(e)
+        logger.error(f"❌ {reason}")
+        return False, reason
+
     if not tenant_token:
-        logger.error("❌ 无法获取机器人 Token，无法发送授权引导。")
-        return
+        reason = "无法获取机器人 Token，可能是网络异常或应用凭证失效"
+        logger.error(f"❌ {reason}")
+        return False, reason
 
     auth_url = (
         f"https://open.feishu.cn/open-apis/authen/v1/index?app_id={config.FEISHU_APP_ID}"
-        f"&redirect_uri={config.OAUTH_REDIRECT_URI}&state=init"
+        f"&redirect_uri={config.FEISHU_OAUTH_REDIRECT_URI}&state=init"
     )
 
     card = {
@@ -133,12 +145,15 @@ def send_auth_nudge():
     try:
         req.fetch(
             {
-                "receive_id": config.TARGET_CHAT_ID,
+                "receive_id": config.FEISHU_TARGET_CHAT_ID,
                 "content": json.dumps(card),
                 "msg_type": "interactive",
                 "headers": {"Authorization": f"Bearer {tenant_token}"},
             }
         )
         logger.info("🚀 已向群聊发送授权引导卡片")
+        return True, None
     except Exception as e:
-        logger.error(f"❌ 发送引导卡片失败: {e}")
+        reason = str(e)
+        logger.error(f"❌ 发送引导卡片失败: {reason}")
+        return False, reason
