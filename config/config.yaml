@@ -26,14 +26,19 @@ models:
 # 代码仓库配置
 repos:
   gitlab:
-    token: "U6Die4ueDJjypN_VFGYf"
+    token: ""
     base_url: "http://git.b2bwings.com"
-    target_user: "liangan"
+    target_user: ""
     repos:
       - path: "frontend_b2bwings/b2b-wings-composite"
         branch: "test"
       - path: "frontend_b2bwings/b2b-wings-easyloan-mini"
         branch: "master"
+        # 爬取日期配置（不传则默认爬取当天）
+        # 支持单个日期或日期区间，每个元素以逗号分隔起止日期
+        crawl_dates:
+          - "2026-01-01, 2026-01-08"
+          - "2026-02-10"
       - path: "frontend_b2bwings/b2b-wings-easyloan-admin"
         branch: "test"
 
