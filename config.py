@@ -109,6 +109,16 @@ class Config:
     APP_TENANT_TOKEN = os.getenv("APP_TENANT_TOKEN", "")
 
     @classmethod
+    def get_repo_platforms(cls):
+        """
+        获取 config.yaml 中配置的所有仓库平台名称
+        """
+        repos_cfg = _YAML_CONFIG.get("repos", {})
+        if not isinstance(repos_cfg, dict):
+            return []
+        return list(repos_cfg.keys())
+
+    @classmethod
     def validate(cls):
         """
         验证必要的配置项是否存在

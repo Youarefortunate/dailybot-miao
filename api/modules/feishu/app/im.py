@@ -11,4 +11,10 @@ def get_im_api():
             "url": "/open-apis/im/v1/messages",
             "params": {"receive_id_type": "chat_id"},
         },
+        # 更新消息内容
+        "update_message": {
+            "method": "PATCH",
+            "auth_type": "app",
+            "url": "/open-apis/im/v1/messages/:message_id",
+        },
     }
