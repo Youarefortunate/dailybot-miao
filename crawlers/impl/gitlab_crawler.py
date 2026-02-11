@@ -11,7 +11,7 @@ class GitlabCrawler(BaseCrawler):
     GitLab 提交记录爬虫
     """
 
-    PLATFORM_NAME = "gitlab"
+    CRAWLER_NAME = "gitlab"
 
     def __init__(self):
         super().__init__()

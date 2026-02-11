@@ -12,22 +12,22 @@ class BaseCrawler(ABC):
     爬虫基类，采用模板方法模式定义爬取流程。
     """
 
-    PLATFORM_NAME = "unknown"
+    CRAWLER_NAME = "unknown"
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         # 自动将子类注册到爬虫管理器
-        if cls.PLATFORM_NAME != "unknown":
-            crawler_manager.register_crawler(cls.PLATFORM_NAME, cls)
+        if cls.CRAWLER_NAME != "unknown":
+            crawler_manager.register_crawler(cls.CRAWLER_NAME, cls)
 
     def __init__(self):
         pass
 
     def get_platform_name(self) -> str:
         """
-        获取平台名称（默认优先使用类定义的 PLATFORM_NAME）
+        获取平台显示名称（默认优先使用类定义的 CRAWLER_NAME）
         """
-        return self.PLATFORM_NAME
+        return self.CRAWLER_NAME
 
     @abstractmethod
     def get_repos_config(self) -> list:

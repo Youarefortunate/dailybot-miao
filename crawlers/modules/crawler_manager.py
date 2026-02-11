@@ -20,11 +20,11 @@ class CrawlerManager(BaseDynamicManager):
             name_templates=["{key}_crawler", "{key}"],
         )
 
-    def register_crawler(self, name: str, crawler_class):
+    def register_crawler(self, crawler_name: str, crawler_class):
         """
-        供 BaseCrawler 使用的注册接口
+        注册爬虫类
         """
-        self.register(name, crawler_class)
+        self.register(crawler_name, crawler_class)
 
     def get_crawler_class(self, name: str):
         """
