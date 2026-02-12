@@ -16,7 +16,7 @@ def _load_prompts():
             return
 
         for item in os.listdir(path):
-            # 忽略隐藏文件、系统生成文件及 modules 目录
+            # 忽略隐藏文件、系统生成文件
             if item.startswith(".") or item.startswith("__"):
                 continue
 

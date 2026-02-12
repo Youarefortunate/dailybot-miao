@@ -3,11 +3,11 @@ from loguru import logger
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from api import apis
-from config import config
+from common.config import config
 from request.hooks import use_request
 from exceptions import GlobalExceptionHandler, BusinessException
 from enums import ResultCode
-from token_store import save_token, fetch_tenant_access_token
+from common.token_store import save_token, fetch_tenant_access_token
 
 app = FastAPI()
 

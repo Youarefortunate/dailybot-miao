@@ -1,8 +1,8 @@
 from loguru import logger
 from api import apis
-from config import config
+from common import config
 from ..modules.base_platform import BasePlatform
-from token_store import (
+from common import (
     get_refresh_token,
     save_token,
     get_token as get_local_token,

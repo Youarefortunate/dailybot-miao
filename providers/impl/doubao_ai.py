@@ -1,7 +1,7 @@
 from loguru import logger
 from api import apis
 from request.hooks.use_request import use_request
-from config import config
+from common.config import config
 from prompts import prompts
 from ..modules.base_ai import BaseAIProvider
 

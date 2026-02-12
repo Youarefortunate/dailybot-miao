@@ -1,4 +1,4 @@
-from config import config
+from common.config import config
 from ..modules.base_platform import BasePlatform
 
 

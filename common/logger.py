@@ -1,6 +1,6 @@
 import sys
 from loguru import logger
-from config import config
+from common.config import config
 
 # 移除 loguru 默认的 stderr handler
 logger.remove()

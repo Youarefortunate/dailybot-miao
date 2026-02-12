@@ -11,7 +11,8 @@ def _load_yaml_config():
     if yaml is None:
         return {}
 
-    base_dir = os.path.dirname(os.path.abspath(__file__))
+    # 指向项目根目录 (common/config.py 的上一级)
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     yaml_path = os.path.join(base_dir, "config", "config.yaml")
 
     if not os.path.exists(yaml_path):
@@ -97,7 +98,9 @@ def _parse_gitlab_repos(repos_str: str):
 
 
 # 加载 .env 文件中的环境变量（作为 YAML 之外的兜底）
-load_dotenv()
+# 加载根目录下的 .env 文件
+_base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+load_dotenv(os.path.join(_base_dir, ".env"))
 
 
 class Config:

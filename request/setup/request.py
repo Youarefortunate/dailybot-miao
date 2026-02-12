@@ -1,6 +1,6 @@
 from .. import create_http_request
 from ..platforms.modules.platform_manager import platform_manager
-from config import config
+from common.config import config
 
 # 创建默认的 HTTP 请求实例
 request = create_http_request()

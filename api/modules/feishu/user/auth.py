@@ -1,4 +1,4 @@
-from config import config
+from common.config import config
 
 
 def get_auth_api():

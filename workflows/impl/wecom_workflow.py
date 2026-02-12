@@ -1,7 +1,7 @@
 from loguru import logger
 from workflows.modules.base_workflow import BaseWorkflow
 from providers import AIFactory
-from config import config
+from common.config import config
 
 
 class WeComWorkflow(BaseWorkflow):
