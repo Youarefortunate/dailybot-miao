@@ -59,15 +59,40 @@ graph TD
 
 ---
 
-## 📂 模块导览
+---
+
+## 📂 目录架构
+
+```text
+DailyBot/
+├── common/              # 公共模块（配置、日志、Token 存储、OAuth FastAPI）
+├── tasks/               # 任务模块（定时推送调度器）
+├── api/                 # 接口定义（各平台 API 配置，支持动态加载）
+├── crawlers/            # 爬虫实现（GitLab、飞书任务等采集逻辑）
+├── providers/           # AI 供应商（豆包等大模型适配）
+├── request/             # 请求核心（Hooks、平台拦截器、HTTP 封装）
+├── workflows/           # 工作流（报告生成流程编排）
+├── enums/               # 通用枚举
+├── exceptions/          # 异常处理（全局拦截与逻辑异常）
+├── config/              # 物理配置文件 (config.yaml)
+├── logs/                # 运行时日志
+└── main.py              # 程序主入口
+```
+
+---
+
+## 🧩 模块导览
 
 | 目录 | 职责说明 | 关键特性 |
 | :-- | :-- | :-- |
-| `crawlers/` | 数据采集模块 | 支持 GitLab/飞书任务，自动去重与时间窗口过滤 |
-| `providers/` | AI 供应商模块 | 统一定义 Prompt，支持不同模型的能力适配 |
-| `workflows/` | 推送工作流模块 | 支持卡片占位、消息原位更新、多平台分发 |
-| `request/` | 核心请求库 | 基于 `use_request` 钩子，支持自动拦截、Token 刷新与路径参数替换 |
-| `enums/` & `exceptions/` | 标准化模块 | 定义统一的状态码与业务异常处理逻辑 |
+| `common/` | 公共基础设施 | 统一配置加载、JSDoc 风格日志、无感 Token 刷新机制 |
+| `tasks/` | 自动化调度 | 基于 APScheduler 的定时推送任务管理 |
+| `api/` | 声明式 API | 支持按平台/功能模块化定义接口，动态加载至 `apis` 对象 |
+| `crawlers/` | 数据采集层 | 支持 GitLab/飞书任务，自动去重与时间窗口过滤 |
+| `providers/` | AI 适配层 | 统一个性化 Prompt，支持不同模型的能力平滑适配 |
+| `workflows/` | 业务流编排 | 支持卡片占位、消息原位更新、多平台分发任务 |
+| `request/` | 插件化请求库 | 统一的 `use_request` 模式，内置多平台请求拦截器 |
+| `utils/` | 通用工具类 | 类型转换、动态管理等基础工具 |
 
 ---
 
