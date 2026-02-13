@@ -2,7 +2,7 @@
 platforms:
   # 飞书
   feishu:
-    ai_model: "doubao"  # 该平台使用的总结模型
+    ai_model: "glm"  # 该平台使用的总结模型
     app_id: ""
     app_secret: ""
     bot_token: ""
@@ -24,6 +24,10 @@ models:
     api_key: ""
     base_url: ""
     model: ""
+  glm:
+    api_key: ""
+    base_url: ""
+    model: ""
 
 # 代码仓库配置
 repos:
@@ -36,13 +40,12 @@ repos:
         branch: "test"
         name: "村才后台管理系统"
       - path: "frontend_b2bwings/b2b-wings-easyloan-mini"
-        branch: "master"
+        branch: "master, liangan"
         name: "农融易小程序"
         # 爬取日期配置（不传则默认爬取当天）
         # 支持单个日期或日期区间，每个元素以逗号分隔起止日期
         crawl_dates:
-          - "2026-01-01, 2026-01-08"
-          - "2026-02-10"
+          - "2026-01-01, 2026-01-13"
       - path: "frontend_b2bwings/b2b-wings-easyloan-admin"
         branch: "test"
         name: "农融易后台管理系统"
