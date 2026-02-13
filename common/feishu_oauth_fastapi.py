@@ -21,30 +21,45 @@ def callback(code: str):
     logger.info(f"📡 接收到授权回调，Code: {code[:10]}...")
     token_api = use_request(apis.feishu_user_auth.get_access_token)
 
-    # fetch 现在返回的是 Result 对象 (或被 DotDict 封装的 Result)
-    # 因为 BasePlatform 拦截器返回了 Result 对象
-    res = token_api.fetch({"code": code})
-    if not res or not res.is_success():
-        raise BusinessException(msg=f"授权失败: {res.msg if res else '未知错误'}")
+    open_id = None
+    try:
+        # fetch 在成功时返回数据字典，失败时会抛出异常 (use_request 内部逻辑)
+        res_data = token_api.fetch({"code": code})
+        if not res_data:
+            raise BusinessException(msg="授权服务器返回数据为空")
 
-    # Result 对象的 data 字段包含了 access_token 等
-    res_data = res.data
-    open_id = res_data["open_id"]
-    access_token = res_data["access_token"]
-    refresh_token = res_data["refresh_token"]
+        open_id = res_data.get("open_id")
+        access_token = res_data.get("access_token")
+        refresh_token = res_data.get("refresh_token")
 
-    # 获取自建应用 token (tenant_access_token)
-    logger.info(f"🔄 正在为用户 {open_id} 获取自建应用 Token...")
-    app_token = fetch_tenant_access_token()
+        if not open_id or not access_token:
+            raise BusinessException(msg="授权数据不完整")
 
-    # 一起存入 token_store
-    save_token(open_id, access_token, refresh_token, app_token=app_token)
+        # 获取自建应用 token (tenant_access_token)
+        logger.info(f"🔄 正在为用户 {open_id} 获取自建应用 Token...")
+        app_token = fetch_tenant_access_token()
 
-    # 授权成功后发送精美通知卡片
-    logger.info(f"✅ 授权成功，准备为用户 {open_id} 发送成功提示...")
-    send_success_card(open_id)
+        # 一起存入 token_store
+        save_token(open_id, access_token, refresh_token, app_token=app_token)
 
-    return HTMLResponse("<h2>授权成功！请返回终端查看进度。</h2>")
+        # 授权成功后发送精美通知卡片
+        logger.info(f"✅ 授权成功，准备为用户 {open_id} 发送成功提示...")
+        send_success_card(open_id)
+
+        return HTMLResponse("<h2>授权成功！请返回终端查看进度。</h2>")
+
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"❌ 授权处理异常: {error_msg}")
+
+        # 如果能拿到 open_id，尝试向用户推送失败通知
+        if open_id:
+            send_failure_card(open_id, error_msg)
+
+        # 抛出异常以触发 GlobalExceptionHandler
+        if isinstance(e, BusinessException):
+            raise e
+        raise BusinessException(msg=f"授权失败: {error_msg}")
 
 
 def get_tenant_token():
@@ -96,6 +111,52 @@ def send_success_card(open_id):
         logger.info(f"✨ 已向用户 {open_id} 推送授权成功反馈卡片")
     except Exception as e:
         logger.warning(f"⚠️ 推送授权成功反馈失败: {e}")
+
+
+def send_failure_card(open_id, reason):
+    """发送授权失败卡片"""
+    tenant_token = get_tenant_token()
+    if not tenant_token:
+        return
+
+    card = {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "title": {"tag": "plain_text", "content": "⚠️ 授权失败"},
+            "template": "red",
+        },
+        "elements": [
+            {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": f"非常抱歉，授权过程中出现了问题。\n\n**失败原因：**\n{reason}\n\n**建议操作：**\n- 请检查网络连接后重试。\n- 如果问题持续存在，请联系系统管理员。",
+                },
+            },
+            {"tag": "hr"},
+            {
+                "tag": "note",
+                "elements": [
+                    {"tag": "plain_text", "content": "您可以尝试重新发起授权。"}
+                ],
+            },
+        ],
+    }
+
+    req = use_request(apis.feishu_app_im.send_message)
+    try:
+        req.fetch(
+            {
+                "params": {"receive_id_type": "open_id"},
+                "receive_id": open_id,
+                "content": json.dumps(card),
+                "msg_type": "interactive",
+                "headers": {"Authorization": f"Bearer {tenant_token}"},
+            }
+        )
+        logger.info(f"❌ 已向用户 {open_id} 推送授权失败反馈卡片")
+    except Exception as e:
+        logger.warning(f"⚠️ 推送授权失败反馈失败: {e}")
 
 
 def send_auth_nudge():
