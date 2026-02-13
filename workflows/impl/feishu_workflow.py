@@ -88,10 +88,14 @@ class FeishuWorkflow(BaseWorkflow):
             if not message_id:
                 logger.warning(f"[{self.WORKFLOW_NAME}] 无法获取占位卡片 message_id。")
 
-            return {"message_id": message_id, "headers": headers}
+            return {
+                "message_id": message_id,
+                "headers": headers,
+                "raw_report": raw_report,
+            }
         except Exception as e:
             logger.error(f"[{self.WORKFLOW_NAME}] 发送占位卡片失败: {e}")
-            return {}
+            return {"raw_report": raw_report}
 
     def summarize(self, raw_report: str) -> str:
         """
@@ -124,6 +128,7 @@ class FeishuWorkflow(BaseWorkflow):
         """
         message_id = context.get("message_id")
         headers = context.get("headers")
+        raw_report = context.get("raw_report", "")
 
         try:
             # 尝试解析 JSON
@@ -132,22 +137,28 @@ class FeishuWorkflow(BaseWorkflow):
                 # 如果不是列表，可能是单条对象或错误格式，尝试包裹
                 data = [data] if isinstance(data, dict) else []
 
-            card = self._build_daily_card(data)
+            card = self._build_daily_card(data, raw_report=raw_report)
         except Exception as e:
-            # 解析失败，回退到纯文本卡片
+            # 解析失败，说明 summary 可能是错误描述字符串
             logger.warning(
-                f"[{self.WORKFLOW_NAME}] JSON 解析或卡片构建失败: {e}，回退到纯文本展示"
+                f"[{self.WORKFLOW_NAME}] JSON 解析失败，将作为错误信息展示: {e}"
             )
             card = {
                 "header": {
                     "title": {
                         "tag": "plain_text",
-                        "content": "📊 每日工作总结 (格式异常)",
+                        "content": "⚠️ 总结执行异常",
                     },
-                    "template": "orange",
+                    "template": "red",
                 },
                 "elements": [
-                    {"tag": "div", "text": {"tag": "lark_md", "content": summary}}
+                    {
+                        "tag": "div",
+                        "text": {
+                            "tag": "lark_md",
+                            "content": f"**模型返回异常：**\n{summary}\n\n---\n*请检查模型配置或稍后重试。*",
+                        },
+                    }
                 ],
             }
 
@@ -169,20 +180,27 @@ class FeishuWorkflow(BaseWorkflow):
             # 备选方案：直接发送新消息
             self._send_raw(card, headers)
 
-    def _build_daily_card(self, items: list) -> dict:
+    def _build_daily_card(self, items: list, raw_report: str = "") -> dict:
         """
         构建飞书交互式卡片
         """
         if not items:
+            # 如果有原始报文但 AI 没提取出 items，说明是提取逻辑问题
+            content = "今日暂无工作记录"
+            template = "grey"
+            if raw_report.strip():
+                content = "⚠️ **模型未能从报文中提取到有效工作项**\n\n请检查模型提示词（Prompt）是否能正确解析您的提交规范。"
+                template = "orange"
+
             return {
                 "header": {
                     "title": {"tag": "plain_text", "content": "📊 每日工作总结"},
-                    "template": "grey",
+                    "template": template,
                 },
                 "elements": [
                     {
                         "tag": "div",
-                        "text": {"tag": "lark_md", "content": "今日暂无工作记录"},
+                        "text": {"tag": "lark_md", "content": content},
                     }
                 ],
             }

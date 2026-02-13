@@ -73,6 +73,13 @@ def run_reporting_logic():
     raw_report = collect_all_reports()
     if not raw_report:
         log.warning("📭 今日没有任何可汇报的数据。")
+        # 即使没有数据，也尝试通知各平台以便展示“暂无记录”
+        for wf in active_workflows:
+            try:
+                # 传入空内容，触发工作流的暂无记录展示逻辑
+                wf.on_report_success("[]", {"raw_report": ""})
+            except Exception as e:
+                log.error(f"发送暂无记录通知失败: {e}")
         return
 
     log.info("🍟 采集到以下原始报文内容：")

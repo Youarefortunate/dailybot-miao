@@ -43,6 +43,9 @@ class DoubaoAI(BaseAIProvider):
         }
         # 合并自定义参数 (如 timeout, temperature 等)
         if custom_params:
+            # 如果存在 timeout，则将其从分钟转换为秒
+            if "timeout" in custom_params:
+                custom_params["timeout"] = custom_params["timeout"] * 60
             payload.update(custom_params)
 
         try:
@@ -66,5 +69,6 @@ class DoubaoAI(BaseAIProvider):
             return content
 
         except Exception as e:
-            logger.error(f"[{self.AI_PROVIDER_NAME}] 总结过程出错: {e}")
-            return "[]"
+            error_msg = f"总结过程出错: {str(e)}"
+            logger.error(f"[{self.AI_PROVIDER_NAME}] {error_msg}")
+            return error_msg
