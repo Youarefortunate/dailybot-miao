@@ -15,6 +15,8 @@ class FeishuWorkflow(BaseWorkflow):
     """
 
     WORKFLOW_NAME = "feishu"
+    # 记录本次运行是否已发送过引导
+    _nudge_sent = False
 
     def __init__(self):
         self.send_api = use_request(apis.feishu_app_im.send_message)
@@ -28,12 +30,16 @@ class FeishuWorkflow(BaseWorkflow):
         if tokens:
             return True
 
+        if FeishuWorkflow._nudge_sent:
+            return False
+
         logger.info(f"[{self.WORKFLOW_NAME}] 未发现有效授权，正在发送引导卡片...")
         success, reason = send_auth_nudge()
         if not success:
             logger.error(f"[{self.WORKFLOW_NAME}] 发送引导卡片失败: {reason}")
             return False
 
+        FeishuWorkflow._nudge_sent = True
         logger.info(f"[{self.WORKFLOW_NAME}] 已发送引导卡片，等待用户授权...")
         # 注意：这里我们只负责发起引导，外层 main.py 会负责全局的轮询等待
         return True
@@ -91,16 +97,25 @@ class FeishuWorkflow(BaseWorkflow):
         """
         使用配置指定的模型进行总结
         """
-        # 获取飞书平台配置的模型，默认为 doubao
         platform_config = config.get_platform(self.WORKFLOW_NAME)
-        provider = platform_config.get("ai_model", "doubao")
+        provider_key = platform_config.get("ai_model", "doubao")
 
-        ai_instance = AIFactory.get_ai(provider)
+        # 获取模型详情
+        model_cfg = config.get_model(provider_key)
+        model_name = model_cfg.get("name", provider_key)
+
+        # 这里的 model_id 需要根据 provider_key 动态获取对应的 Config 属性
+        model_attr = f"{provider_key.upper()}_MODEL"
+        model_id = getattr(config, model_attr, "unknown")
+
+        ai_instance = AIFactory.get_ai(provider_key)
         if not ai_instance:
-            logger.error(f"[{self.WORKFLOW_NAME}] 未找到模型供应商: {provider}")
+            logger.error(f"[{self.WORKFLOW_NAME}] 未找到模型供应商: {provider_key}")
             return "总结失败: 未找到模型供应商"
 
-        logger.info(f"[{self.WORKFLOW_NAME}] 正在调度 {provider} 模型生成总结...")
+        logger.info(
+            f"[{self.WORKFLOW_NAME}] 正在调度 {model_name} (model_id: {model_id}) 模型生成总结..."
+        )
         return ai_instance.summarize(raw_report)
 
     def on_report_success(self, summary: str, context: dict):

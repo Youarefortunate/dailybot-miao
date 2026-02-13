@@ -133,6 +133,17 @@ class Config:
         return {}
 
     @classmethod
+    def get_model(cls, model_key: str) -> dict:
+        """
+        根据模型 key (如 'doubao', 'glm') 获取其在 models 分类下的配置
+        """
+        models_cfg = _YAML_CONFIG.get("models", {})
+        model_data = models_cfg.get(model_key)
+        if isinstance(model_data, dict):
+            return model_data
+        return {}
+
+    @classmethod
     def validate(cls):
         """
         验证必要的配置项是否存在

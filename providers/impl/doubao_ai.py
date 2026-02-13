@@ -28,17 +28,25 @@ class DoubaoAI(BaseAIProvider):
         # 拼接 Prompt
         user_content = f"{user_template}\n{text}" if user_template else text
 
+        # 获取模型配置和自定义参数
+        model_cfg = config.get_model(self.AI_PROVIDER_NAME)
+        model_id = config.DOUBAO_MODEL
+        custom_params = model_cfg.get("params", {})
+
+        # 构建请求参数
+        payload = {
+            "model": model_id,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ],
+        }
+        # 合并自定义参数 (如 timeout, temperature 等)
+        if custom_params:
+            payload.update(custom_params)
+
         try:
-            res_data = self.ai_req.fetch(
-                {
-                    "model": config.DOUBAO_MODEL,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_content},
-                    ],
-                    "timeout": 180,  # 超时设定3分钟
-                }
-            )
+            res_data = self.ai_req.fetch(payload)
             # 由于 use_request 已经解包了 Result.data，res_data 现在就是原始的 choices 字典
             if isinstance(res_data, dict) or hasattr(res_data, "get"):
                 content = (

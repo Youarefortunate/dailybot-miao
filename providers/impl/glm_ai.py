@@ -28,17 +28,25 @@ class GlmAI(BaseAIProvider):
         # 拼接 Prompt
         user_content = f"{user_template}\n{text}" if user_template else text
 
+        # 获取模型配置和自定义参数
+        model_cfg = config.get_model(self.AI_PROVIDER_NAME)
+        model_id = config.GLM_MODEL
+        custom_params = model_cfg.get("params", {})
+
+        # 构建请求参数
+        payload = {
+            "model": model_id,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ],
+        }
+        # 合并自定义参数 (如 timeout, temperature 等)
+        if custom_params:
+            payload.update(custom_params)
+
         try:
-            res_data = self.ai_req.fetch(
-                {
-                    "model": config.GLM_MODEL,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_content},
-                    ],
-                    "timeout": 180,  # 超时设定3分钟
-                }
-            )
+            res_data = self.ai_req.fetch(payload)
 
             # API 响应通常已经由 use_request 解包
             if isinstance(res_data, dict) or hasattr(res_data, "get"):

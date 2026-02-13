@@ -21,13 +21,19 @@ platforms:
 # AI 模型配置
 models:
   doubao:
+    name: "豆包大模型"
     api_key: ""
     base_url: ""
     model: ""
+    params:
+      timeout: 180 # 设定3分钟超时
   glm:
+    name: "智谱清言大模型"
     api_key: ""
     base_url: ""
     model: ""
+    params:
+      timeout: 180
 
 # 代码仓库配置
 repos:
