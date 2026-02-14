@@ -51,7 +51,7 @@ repos:
         # 爬取日期配置（不传则默认爬取当天）
         # 支持单个日期或日期区间，每个元素以逗号分隔起止日期
         crawl_dates:
-          - "2026-01-01, 2026-01-31"
+          - "2026-01-4"
       - path: "frontend_b2bwings/b2b-wings-easyloan-admin"
         branch: "test"
         name: "农融易后台管理系统"
