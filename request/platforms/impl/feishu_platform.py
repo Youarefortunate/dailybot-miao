@@ -35,7 +35,7 @@ class FeishuPlatform(BasePlatform):
     def get_token(self, params=None):
         """
         自动获取 Token。
-        - 如果 params 中包含 auth_type="app"，则返回自建应用 Token。
+        - 如果 config 中包含 auth_type="app"，则返回自建应用 Token。
         - 否则默认返回用户 access_token。
         """
         if self.token:

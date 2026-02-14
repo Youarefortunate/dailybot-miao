@@ -1,6 +1,6 @@
 from loguru import logger
 from apscheduler.schedulers.blocking import BlockingScheduler
-from main import main as rootMain
+import main
 import json
 import os
 from common import refresh_user_token, get_refresh_token
@@ -27,11 +27,11 @@ def job():
     logger.info("[定时任务] 刷新所有用户token...")
     refresh_all_tokens()
     # 执行推送任务
-    rootMain.main()
+    main.main()
 
 
 if __name__ == "__main__":
     scheduler = BlockingScheduler()
-    scheduler.add_job(job, "cron", hour=18, minute=20)
+    scheduler.add_job(job, "cron", hour=00, minute=31)
     logger.info("定时推送服务已启动，每天18:20自动推送")
     scheduler.start()

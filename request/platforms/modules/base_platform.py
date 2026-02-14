@@ -50,15 +50,8 @@ class BasePlatform:
         """
         请求拦截器：自动注入 Auth Header
         """
-        # 获取用于认证的参数（如 open_id）
-        auth_params = (
-            config.get("params", {})
-            if config.get("method") == "GET"
-            else config.get("json", {})
-        )
-
         # 自动获取 Token
-        token = self.get_token(auth_params)
+        token = self.get_token(params=config)
         if token:
             if "headers" not in config:
                 config["headers"] = {}
@@ -80,6 +73,7 @@ class BasePlatform:
 
     def get_request_headers(self):
         return {
+            "Connection": "close", # FIX: requests库会可能存在："Remote end closed connection without response" 的解决方案
             "User-Agent": "MCP-Audit-Client/1.0",
         }
 
