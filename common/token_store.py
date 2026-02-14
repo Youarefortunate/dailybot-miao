@@ -1,8 +1,11 @@
 import json
 import os
+import inspect
 from loguru import logger
 from api import apis
 from request.hooks import use_request
+from functools import wraps
+
 
 # 存储 Token 的本地 JSON 文件名
 TOKEN_FILE = "token.json"
@@ -15,9 +18,6 @@ def _auto_ensure_loaded(func):
     装饰器：在调用被装饰函数前自动执行 `_ensure_loaded()`。
     如果函数的 `open_id` 参数为 `None`，则自动使用 `get_current_open_id()`。
     """
-    from functools import wraps
-    import inspect
-
     @wraps(func)
     def wrapper(*args, **kwargs):
         _ensure_loaded()
