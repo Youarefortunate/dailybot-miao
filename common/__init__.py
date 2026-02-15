@@ -10,7 +10,7 @@ from .token_store import (
     get_refresh_token,
     refresh_user_token,
 )
-from .feishu_oauth_fastapi import app, send_auth_nudge, get_tenant_token
+from .feishu_oauth_fastapi import app, send_auth_nudge
 
 __all__ = [
     "config",
@@ -25,5 +25,4 @@ __all__ = [
     "refresh_user_token",
     "app",
     "send_auth_nudge",
-    "get_tenant_token",
 ]

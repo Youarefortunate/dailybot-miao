@@ -7,9 +7,10 @@ from common.config import config
 from request.hooks import use_request
 from exceptions import GlobalExceptionHandler, BusinessException
 from enums import ResultCode
-from common.token_store import save_token, fetch_tenant_access_token
+from common.token_store import save_token, get_app_token, clear_temp_app_token
 
 app = FastAPI()
+req = use_request(apis.feishu_app_im.send_message)
 
 # 注册全局异常处理器
 GlobalExceptionHandler.register(app)
@@ -37,10 +38,12 @@ def callback(code: str):
 
         # 获取自建应用 token (tenant_access_token)
         logger.info(f"🔄 正在为用户 {open_id} 获取自建应用 Token...")
-        app_token = fetch_tenant_access_token()
+        app_token = get_app_token()
 
         # 一起存入 token_store
         save_token(open_id, access_token, refresh_token, app_token=app_token)
+        # 授权成功后，清空临时 app_token 变量
+        clear_temp_app_token()
 
         # 授权成功后发送精美通知卡片
         logger.info(f"✅ 授权成功，准备为用户 {open_id} 发送成功提示...")
@@ -62,16 +65,11 @@ def callback(code: str):
         raise BusinessException(msg=f"授权失败: {error_msg}")
 
 
-def get_tenant_token():
-    """兼容性保留，内部调用封装后的逻辑"""
-    return fetch_tenant_access_token()
-
-
 def send_success_card(open_id):
     """发送授权成功卡片"""
-    tenant_token = get_tenant_token()
-    if not tenant_token:
-        return
+    # tenant_token = fetch_tenant_access_token()
+    # if not tenant_token:
+    #     return
 
     card = {
         "config": {"wide_screen_mode": True},
@@ -97,7 +95,6 @@ def send_success_card(open_id):
         ],
     }
 
-    req = use_request(apis.feishu_app_im.send_message)
     try:
         req.fetch(
             {
@@ -105,7 +102,7 @@ def send_success_card(open_id):
                 "receive_id": open_id,  # 直接推送到用户
                 "content": json.dumps(card),
                 "msg_type": "interactive",
-                "headers": {"Authorization": f"Bearer {tenant_token}"},
+                # "headers": {"Authorization": f"Bearer {tenant_token}"},
             }
         )
         logger.info(f"✨ 已向用户 {open_id} 推送授权成功反馈卡片")
@@ -115,9 +112,9 @@ def send_success_card(open_id):
 
 def send_failure_card(open_id, reason):
     """发送授权失败卡片"""
-    tenant_token = get_tenant_token()
-    if not tenant_token:
-        return
+    # tenant_token = fetch_tenant_access_token()
+    # if not tenant_token:
+    #     return
 
     card = {
         "config": {"wide_screen_mode": True},
@@ -143,7 +140,6 @@ def send_failure_card(open_id, reason):
         ],
     }
 
-    req = use_request(apis.feishu_app_im.send_message)
     try:
         req.fetch(
             {
@@ -151,7 +147,7 @@ def send_failure_card(open_id, reason):
                 "receive_id": open_id,
                 "content": json.dumps(card),
                 "msg_type": "interactive",
-                "headers": {"Authorization": f"Bearer {tenant_token}"},
+                # "headers": {"Authorization": f"Bearer {tenant_token}"},
             }
         )
         logger.info(f"❌ 已向用户 {open_id} 推送授权失败反馈卡片")
@@ -166,17 +162,17 @@ def send_auth_nudge():
     - success=True 表示发送成功
     - success=False 时 error_reason 包含具体失败原因
     """
-    try:
-        tenant_token = get_tenant_token()
-    except Exception as e:
-        reason = str(e)
-        logger.error(f"❌ {reason}")
-        return False, reason
+    # try:
+    #     tenant_token = fetch_tenant_access_token()
+    # except Exception as e:
+    #     reason = str(e)
+    #     logger.error(f"❌ {reason}")
+    #     return False, reason
 
-    if not tenant_token:
-        reason = "无法获取机器人 Token，可能是网络异常或应用凭证失效"
-        logger.error(f"❌ {reason}")
-        return False, reason
+    # if not tenant_token:
+    #     reason = "无法获取机器人 Token，可能是网络异常或应用凭证失效"
+    #     logger.error(f"❌ {reason}")
+    #     return False, reason
 
     auth_url = (
         f"https://open.feishu.cn/open-apis/authen/v1/index?app_id={config.FEISHU_APP_ID}"
@@ -211,14 +207,13 @@ def send_auth_nudge():
         ],
     }
 
-    req = use_request(apis.feishu_app_im.send_message)
     try:
         req.fetch(
             {
                 "receive_id": config.FEISHU_TARGET_CHAT_ID,
                 "content": json.dumps(card),
                 "msg_type": "interactive",
-                "headers": {"Authorization": f"Bearer {tenant_token}"},
+                # "headers": {"Authorization": f"Bearer {tenant_token}"},
             }
         )
         logger.info("🚀 已向群聊发送授权引导卡片")

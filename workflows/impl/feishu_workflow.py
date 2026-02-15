@@ -3,7 +3,7 @@ from loguru import logger
 from api import apis
 from common import config
 from request.hooks import use_request
-from common import send_auth_nudge, get_tenant_token
+from common import send_auth_nudge
 from providers import AIFactory
 from common import load_all_tokens
 from workflows.modules.base_workflow import BaseWorkflow
@@ -33,7 +33,7 @@ class FeishuWorkflow(BaseWorkflow):
         if FeishuWorkflow._nudge_sent:
             return False
 
-        logger.info(f"[{self.WORKFLOW_NAME}] 未发现有效授权，正在发送引导卡片...")
+        logger.warning(f"[{self.WORKFLOW_NAME}] 未发现有效授权，正在发送引导卡片...")
         success, reason = send_auth_nudge()
         if not success:
             logger.error(f"[{self.WORKFLOW_NAME}] 发送引导卡片失败: {reason}")

@@ -4,11 +4,9 @@ from common import config
 from ..modules.base_platform import BasePlatform
 from common import (
     get_refresh_token,
-    save_token,
-    get_token as get_local_token,
+    get_token as get_user_token,
     get_app_token,
-    fetch_tenant_access_token,
-    refresh_user_token as store_refresh_user_token,
+    refresh_user_token,
     get_current_open_id,
 )
 from ...hooks.use_request import use_request
@@ -41,13 +39,17 @@ class FeishuPlatform(BasePlatform):
         if self.token:
             return self.token
 
+        # 1. 如果请求的是自建应用 Token，直接调用获取
+        if isinstance(params, dict) and params.get("auth_type") == "app":
+            return get_app_token()
+
+        # 2. 否则是获取用户 Token，此时必须有 open_id
         open_id = get_current_open_id()
         if not open_id:
+            logger.warning("[Feishu] 尝试获取用户 Token 但未找到有效的 open_id")
             return None
 
-        if isinstance(params, dict) and params.get("auth_type") == "app":
-            return get_app_token(open_id)
-        return get_local_token(open_id)
+        return get_user_token(open_id)
 
     def _is_token_expired(self, response):
         """
@@ -81,7 +83,9 @@ class FeishuPlatform(BasePlatform):
         """
         open_id = get_current_open_id()
         if not open_id:
-            logger.warning("[Feishu] 刷新失败：未找到当前用户 open_id")
+            logger.warning(
+                "[Feishu] 刷新失败：未找到当前用户 open_id，尝试主动推送卡片让用户授权"
+            )
             return None
 
         logger.info(f"[Feishu] 正在为 {open_id} 进行自闭环无感刷新 (token_store)...")
@@ -93,7 +97,7 @@ class FeishuPlatform(BasePlatform):
 
         try:
             # 直接调用封装好的刷新逻辑
-            new_token = store_refresh_user_token(open_id, refresh_tk)
+            new_token = refresh_user_token(open_id, refresh_tk)
             if new_token:
                 logger.info("[Feishu] 自闭环刷新成功 (token_store)")
                 return new_token

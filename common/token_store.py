@@ -12,12 +12,16 @@ TOKEN_FILE = "token.json"
 # 内存中的 Token 字典，用于快速访问
 _token_dict = {}
 
+# 临时存储自建应用 Token，用于授权流程中的中转
+_temp_app_token = None
+
 
 def _auto_ensure_loaded(func):
     """
     装饰器：在调用被装饰函数前自动执行 `_ensure_loaded()`。
     如果函数的 `open_id` 参数为 `None`，则自动使用 `get_current_open_id()`。
     """
+
     @wraps(func)
     def wrapper(*args, **kwargs):
         _ensure_loaded()
@@ -125,9 +129,46 @@ def get_token(open_id=None):
 
 @_auto_ensure_loaded
 def get_app_token(open_id=None):
-    """获取保存的自建应用 token"""
+    """
+    获取保存的自建应用 token。
+    优化逻辑：内存 -> 临时变量 -> fetch_tenant_access_token
+    """
+    global _temp_app_token
+
+    if open_id is None:
+        open_id = get_current_open_id()
+
+    # 1. 优先尝试从内存获取（已持久化的用户信息中）
     info = _token_dict.get(open_id)
-    return info.get("app_token") if info else None
+    if info and info.get("app_token"):
+        logger.debug(
+            f"🎯 从内存获取到 open_id {open_id} 的 app_token: {info['app_token'][:10]}..."
+        )
+        return info["app_token"]
+
+    # 2. 尝试从临时变量获取（授权过程中的中转）
+    if _temp_app_token:
+        logger.debug(f"⚡ 从临时变量获取到 app_token: {_temp_app_token[:10]}...")
+        return _temp_app_token
+
+    # 3. 在线换取并暂存
+    logger.info("🌐 内存和临时变量中未找到有效的 app_token，准备在线获取...")
+    new_token = fetch_tenant_access_token()
+    if new_token:
+        _temp_app_token = new_token
+        return new_token
+
+    return None
+
+
+def clear_temp_app_token():
+    """
+    清空临时存储的 app_token。
+    通常在用户授权成功并持久化信息后调用。
+    """
+    global _temp_app_token
+    _temp_app_token = None
+    logger.debug("🧹 临时 app_token 已清空")
 
 
 @_auto_ensure_loaded
@@ -160,16 +201,11 @@ def refresh_user_token(open_id, refresh_token, tenant_access_token=None):
         )
 
         if data and "access_token" in data:
-            # 获取最新的应用 token 一并存入，确保存储的是最新的
-            try:
-                new_app_token = fetch_tenant_access_token()
-            except Exception:
-                new_app_token = tenant_access_token
             save_token(
                 open_id,
                 data["access_token"],
                 data.get("refresh_token", refresh_token),
-                app_token=new_app_token,
+                app_token=tenant_access_token,
             )
             logger.info(f"open_id {open_id} access_token 已刷新")
             return data["access_token"]

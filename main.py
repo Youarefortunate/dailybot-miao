@@ -9,7 +9,7 @@ from api import apis
 from common import config
 from request.hooks import use_request
 from common import load_all_tokens
-from common import app, send_auth_nudge, get_tenant_token
+from common import app, send_auth_nudge
 from crawlers import CrawlerFactory
 from workflows import WorkflowFactory
 from exceptions import handle_logic_exception
