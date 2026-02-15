@@ -54,9 +54,6 @@ class FeishuWorkflow(BaseWorkflow):
             )
             return {}
 
-        tenant_token = get_tenant_token()
-        headers = {"Authorization": f"Bearer {tenant_token}"}
-
         placeholder_card = {
             "header": {
                 "title": {"tag": "plain_text", "content": "🤖 正在生成总结..."},
@@ -79,7 +76,6 @@ class FeishuWorkflow(BaseWorkflow):
                     "receive_id": config.FEISHU_TARGET_CHAT_ID,
                     "content": json.dumps(placeholder_card),
                     "msg_type": "interactive",
-                    "headers": headers,
                 }
             )
             # 此时 res 是已经解包后的 data 部分 (字典)
@@ -90,7 +86,6 @@ class FeishuWorkflow(BaseWorkflow):
 
             return {
                 "message_id": message_id,
-                "headers": headers,
                 "raw_report": raw_report,
             }
         except Exception as e:
@@ -127,7 +122,6 @@ class FeishuWorkflow(BaseWorkflow):
         更新飞书卡片为最终总结内容 (支持 JSON 结构化卡片)
         """
         message_id = context.get("message_id")
-        headers = context.get("headers")
         raw_report = context.get("raw_report", "")
 
         try:
@@ -168,7 +162,6 @@ class FeishuWorkflow(BaseWorkflow):
                     {
                         "message_id": message_id,
                         "content": json.dumps(card),
-                        "headers": headers,
                     }
                 )
                 logger.info(
@@ -178,7 +171,7 @@ class FeishuWorkflow(BaseWorkflow):
                 logger.error(f"[{self.WORKFLOW_NAME}] 更新消息失败: {e}")
         else:
             # 备选方案：直接发送新消息
-            self._send_raw(card, headers)
+            self._send_raw(card)
 
     def _build_daily_card(self, items: list, raw_report: str = "") -> dict:
         """
@@ -247,7 +240,7 @@ class FeishuWorkflow(BaseWorkflow):
             "elements": elements,
         }
 
-    def _send_raw(self, card, headers):
+    def _send_raw(self, card):
         if not config.FEISHU_TARGET_CHAT_ID:
             return
         try:
@@ -256,7 +249,6 @@ class FeishuWorkflow(BaseWorkflow):
                     "receive_id": config.FEISHU_TARGET_CHAT_ID,
                     "content": json.dumps(card),
                     "msg_type": "interactive",
-                    "headers": headers,
                 }
             )
             logger.info(f"[{self.WORKFLOW_NAME}] ✅ 日报已发送 (新消息)")

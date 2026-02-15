@@ -73,7 +73,7 @@ class BasePlatform:
 
     def get_request_headers(self):
         return {
-            "Connection": "close", # FIX: requests库会可能存在："Remote end closed connection without response" 的解决方案
+            "Connection": "close",  # FIX: requests库会可能存在："Remote end closed connection without response" 的解决方案
             "User-Agent": "MCP-Audit-Client/1.0",
         }
 
