@@ -49,6 +49,17 @@ def _auto_ensure_loaded(func):
     return wrapper
 
 
+def _save_to_file():
+    """
+    将内存中的 _token_dict 持久化到本地 JSON 文件。
+    """
+    try:
+        with open(TOKEN_FILE, "w", encoding="utf-8") as f:
+            json.dump(_token_dict, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error(f"持久化 token 文件失败: {e}")
+
+
 def save_token(open_id, access_token, refresh_token, app_token=None):
     """
     保存用户的 access_token、refresh_token 以及自建应用 token (app_token)。
@@ -59,8 +70,7 @@ def save_token(open_id, access_token, refresh_token, app_token=None):
         "refresh_token": refresh_token,
         "app_token": app_token,
     }
-    with open(TOKEN_FILE, "w", encoding="utf-8") as f:
-        json.dump(_token_dict, f, ensure_ascii=False)
+    _save_to_file()
     logger.debug(
         f"保存token: open_id={open_id}, access_token={access_token[:10]}..., "
         f"refresh_token={refresh_token[:10]}..., app_token={app_token[:10] if app_token else None}..."
@@ -157,7 +167,22 @@ def get_app_token(open_id=None, force_refresh=False):
     logger.info("🌐 准备在线获取最新的 app_token...")
     new_token = fetch_tenant_access_token()
     if new_token:
+        # a. 更新临时变量
         _temp_app_token = new_token
+
+        # b. 重要：将新换取的 app_token 同步更新到内存中已存的所有用户条目中
+        # 这样可以确保只要有一个用户触发了刷新，所有用户在内存和文件中的 app_token 都会被同步更新
+        updated = False
+        for oid in _token_dict:
+            if isinstance(_token_dict[oid], dict):
+                _token_dict[oid]["app_token"] = new_token
+                updated = True
+
+        # c. 立即触发持久化落盘，确保状态一致
+        if updated:
+            _save_to_file()
+            logger.debug("💾 app_token 已同步更新至本地文件")
+
         return new_token
 
     return None

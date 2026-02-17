@@ -8,7 +8,7 @@ platforms:
     bot_token: ""
     target_chat_id: ""
     tasklist_guid: ""
-    oauth_redirect_uri: "http://127.0.0.1:8001/callback"
+    oauth_redirect_uri: "http://127.0.0.1:8001/feishu/callback"
     standup_time: "09:00"
     standup_timezone: "Asia/Shanghai"
     base_url: "https://open.feishu.cn"
@@ -20,6 +20,34 @@ platforms:
 
 # AI 模型配置
 models:
+  # ==========================================
+  # 动态 AI 模型配置示例 (由 AIFactory 自动识别并生产)
+  # ==========================================
+  # 场景 1：标准 OpenAI 兼容模型 (如 DeepSeek, Claude, GPT-4)
+  # deepseek:
+  #   name: "DeepSeek-V3"
+  #   base_url: "https://api.deepseek.com/v1"
+  #   api_key: "sk-your-key-here"
+  #   model: "deepseek-chat"
+  #   params:
+  #     temperature: 0.7
+  #     timeout: 5 # 5分钟超时
+
+  # custom_legacy_ai:
+  #   name: "自定义旧式 AI"
+  #   base_url: "https://api.legacy-provider.com"
+  #   api_key: "your-api-key"
+  #   model: "davinci-002"
+  #   apis:
+  #     chat_completions: "POST /v1/completions"
+  #   payload:
+  #     model: "{model}"
+  #     prompt: "系统指令：{system}\n待总结日报：{user}\n请按 JSON 格式返回总结结果。"
+  #     max_tokens: 1024
+  #     top_p: 1.0
+  #   params:
+  #     timeout: 2
+
   doubao:
     name: "豆包大模型"
     api_key: ""
