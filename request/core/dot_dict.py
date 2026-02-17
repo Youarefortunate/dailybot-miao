@@ -4,9 +4,13 @@ class DotDict(dict):
     """
 
     def __getattr__(self, item):
-        try:
+        # 优先从字典内容中取
+        if item in self:
             return self[item]
-        except KeyError:
+        # 否则尝试获取类属性或方法（如 get, update 等）
+        try:
+            return object.__getattribute__(self, item)
+        except AttributeError:
             raise AttributeError(f"'DotDict' object has no attribute '{item}'")
 
     def __setattr__(self, key, value):

@@ -1,191 +1,173 @@
 import os
 import yaml
+import json
 from loguru import logger
 from dotenv import load_dotenv
 
 
-def _load_yaml_config():
-    """
-    从 config/config.yaml 读取配置；如果不存在或解析失败，则返回空字典。
-    """
-    if yaml is None:
-        return {}
-
-    # 指向项目根目录 (common/config.py 的上一级)
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    yaml_path = os.path.join(base_dir, "config", "config.yaml")
-
-    if not os.path.exists(yaml_path):
-        return {}
-
-    try:
-        with open(yaml_path, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-            if not isinstance(data, dict):
-                return {}
-            return data
-    except Exception as e:
-        logger.warning(f"读取 config/config.yaml 失败，将回退到环境变量配置: {e}")
-        return {}
-
-
-_YAML_CONFIG = _load_yaml_config()
-
-
-def _from_yaml(path, default=None):
-    """
-    从嵌套的 YAML 配置中安全取值，例如 path='gitlab.token'
-    """
-    if not _YAML_CONFIG:
-        return default
-
-    parts = path.split(".")
-    cur = _YAML_CONFIG
-    for p in parts:
-        if not isinstance(cur, dict) or p not in cur:
-            return default
-        cur = cur[p]
-    return cur
-
-
-def _iter_yaml_paths(prefix, data):
-    """
-    将嵌套的 YAML 配置拍平成 (path, value) 列表。
-    例如: {"gitlab": {"token": "xxx"}} -> [("gitlab.token", "xxx")]
-    """
-    if isinstance(data, dict):
-        for k, v in data.items():
-            new_prefix = f"{prefix}.{k}" if prefix else k
-            # 继续向下遍历
-            yield from _iter_yaml_paths(new_prefix, v)
-    else:
-        if prefix:
-            yield prefix, data
-
-
-def _path_to_env_key(path: str) -> str:
-    """
-    将 YAML 路径转换为环境变量风格的大写常量名。
-    对于分类键（platforms/models/repos）下的路径，跳过顶层前缀。
-    例如: 'platforms.feishu.base_url' -> 'FEISHU_BASE_URL'
-         'log.level' -> 'LOG_LEVEL'
-    """
-    # 需要跳过的顶层分类前缀
-    _CATEGORY_KEYS = {"platforms", "models", "repos"}
-
-    parts = path.split(".")
-    if len(parts) > 1 and parts[0] in _CATEGORY_KEYS:
-        parts = parts[1:]  # 跳过第一层分类前缀
-
-    return "_".join(parts).upper()
-
-
-def _parse_gitlab_repos(repos_str: str):
-    """
-    解析 GITLAB_REPOS 环境变量字符串 (格式: path:branch,path:branch,...)
-    """
-    if not repos_str:
-        return []
-    repos = []
-    for item in repos_str.split(","):
-        item = item.strip()
-        if ":" in item:
-            path, branch = item.rsplit(":", 1)
-            repos.append({"path": path.strip(), "branch": branch.strip()})
-        else:
-            repos.append({"path": item, "branch": "master"})
-    return repos
-
-
-# 加载 .env 文件中的环境变量（作为 YAML 之外的兜底）
-# 加载根目录下的 .env 文件
-_base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-load_dotenv(os.path.join(_base_dir, ".env"))
-
-
 class Config:
     """
-    项目配置类，负责从环境变量中读取配置项
+    项目配置类，负责从环境变量和 YAML 文件中读取配置项。
+    初始化逻辑在构造函数中自动执行。
     """
 
-    # 应用租户token（通常由代码动态获取）
-    APP_TENANT_TOKEN = os.getenv("APP_TENANT_TOKEN", "")
+    def __init__(self):
+        """
+        构造时自动加载 .env 和 YAML 配置，并动态生成属性。
+        """
+        # 基础私有变量
+        self._yaml_config = {}
+        # 初始加载
+        self.reload()
 
-    @classmethod
-    def get_repo_platforms(cls):
-        """
-        获取 config.yaml 中配置的所有仓库平台名称
-        """
-        repos_cfg = _YAML_CONFIG.get("repos", {})
-        if not isinstance(repos_cfg, dict):
-            return []
-        return list(repos_cfg.keys())
+        # 其他常量
+        self.APP_TENANT_TOKEN = os.getenv("APP_TENANT_TOKEN", "")
 
-    @classmethod
-    def get_platform(cls, platform_name: str) -> dict:
+    def reload(self):
         """
-        根据平台名称获取其在 platforms 分类下的所有配置
+        重新从 .env 和 YAML 加载配置，并刷新动态属性。
         """
-        platforms_cfg = _YAML_CONFIG.get("platforms", {})
-        platform_data = platforms_cfg.get(platform_name)
-        if isinstance(platform_data, dict):
-            return platform_data
-        return {}
+        self.setup_env()
+        self._yaml_config = self.load_yaml_config()
+        self.generate_dynamic_attributes()
 
-    @classmethod
-    def get_model(cls, model_key: str) -> dict:
+    def setup_env(self):
         """
-        根据模型 key (如 'doubao', 'glm') 获取其在 models 分类下的配置
+        加载 .env 文件中的环境变量。
         """
-        models_cfg = _YAML_CONFIG.get("models", {})
-        model_data = models_cfg.get(model_key)
-        if isinstance(model_data, dict):
-            return model_data
-        return {}
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        env_path = os.path.join(base_dir, ".env")
+        if os.path.exists(env_path):
+            load_dotenv(env_path, override=True)
 
-    @classmethod
-    def validate(cls):
+    @staticmethod
+    def load_yaml_config():
         """
-        验证必要的配置项是否存在
+        从 config/config.yaml 读取配置。
         """
-        required_fields = [
-            "FEISHU_APP_ID",
-            "FEISHU_APP_SECRET",
-            "DOUBAO_API_KEY",
-            "FEISHU_TARGET_CHAT_ID",
-            "FEISHU_OAUTH_REDIRECT_URI",
-            "FEISHU_TASKLIST_GUID",
-            "FEISHU_BASE_URL",
-            "GITLAB_TOKEN",
-            "GITLAB_BASE_URL",
-        ]
-        missing = [f for f in required_fields if not getattr(cls, f, None)]
-        if missing:
-            logger.warning(f"缺少必要的配置项: {', '.join(missing)}")
-            return False
-        return True
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        yaml_path = os.path.join(base_dir, "config", "config.yaml")
 
+        if not os.path.exists(yaml_path):
+            return {}
 
-config = Config()
+        try:
+            with open(yaml_path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+                return data if isinstance(data, dict) else {}
+        except Exception as e:
+            logger.warning(f"读取 config/config.yaml 失败: {e}")
+            return {}
 
-# === 基于 YAML 自动生成全大写常量名 ===
-# 分类键（platforms/models/repos）会被跳过
-# 例如: platforms.feishu.base_url -> FEISHU_BASE_URL
-for _path, _yaml_value in _iter_yaml_paths("", _YAML_CONFIG):
-    # gitlab.repos 特殊处理（现在路径变为 repos.gitlab.repos）
-    if _path == "repos.gitlab.repos":
-        _env_raw = os.getenv("GITLAB_REPOS")
-        if _env_raw:
-            Config.GITLAB_REPOS = _parse_gitlab_repos(_env_raw)
+    def generate_dynamic_attributes(self):
+        """
+        基于 YAML 自动生成类实例的属性，支持环境覆盖。
+        """
+        for path, yaml_value in self.iter_yaml_paths("", self._yaml_config):
+            # 特殊处理 gitlab.repos
+            if path == "repos.gitlab.repos":
+                env_raw = os.getenv("GITLAB_REPOS")
+                if env_raw:
+                    self.GITLAB_REPOS = self.parse_gitlab_repos(env_raw)
+                else:
+                    self.GITLAB_REPOS = yaml_value or []
+                continue
+
+            attr_name = self.path_to_env_key(path)
+            env_val = os.getenv(attr_name)
+            final_value = env_val if env_val is not None else yaml_value
+            setattr(self, attr_name, final_value)
+
+    def iter_yaml_paths(self, prefix, data):
+        """
+        递归遍历 YAML 路径。
+        """
+        if isinstance(data, dict):
+            for k, v in data.items():
+                new_prefix = f"{prefix}.{k}" if prefix else k
+                yield from self.iter_yaml_paths(new_prefix, v)
         else:
-            Config.GITLAB_REPOS = _yaml_value or []
-        continue
+            if prefix:
+                yield prefix, data
 
-    # 通用规则：路径转常量名（自动跳过分类前缀）
-    _attr_name = _path_to_env_key(_path)
-    _env_val = os.getenv(_attr_name)
+    @staticmethod
+    def path_to_env_key(path: str) -> str:
+        """
+        路径转环境变量名。
+        """
+        _CATEGORY_KEYS = {"platforms", "models", "repos"}
+        parts = path.split(".")
+        if len(parts) > 1 and parts[0] in _CATEGORY_KEYS:
+            parts = parts[1:]
+        return "_".join(parts).upper()
 
-    # 环境变量优先生效，其次 YAML
-    _final_value = _env_val if _env_val is not None else _yaml_value
+    @staticmethod
+    def parse_gitlab_repos(repos_str: str):
+        """
+        解析 GITLAB_REPOS 字符串。
+        """
+        if not repos_str:
+            return []
+        repos = []
+        for item in repos_str.split(","):
+            item = item.strip()
+            if ":" in item:
+                path, branch = item.rsplit(":", 1)
+                repos.append({"path": path.strip(), "branch": branch.strip()})
+            else:
+                repos.append({"path": item, "branch": "master"})
+        return repos
 
-    setattr(Config, _attr_name, _final_value)
+    def get_merged_config(self, category: str, name: str) -> dict:
+        """
+        核心合并逻辑。
+        """
+        base_cfg = self._yaml_config.get(category, {}).get(name, {})
+        if not isinstance(base_cfg, dict):
+            base_cfg = {}
+
+        data = base_cfg.copy()
+        prefix = f"{name.upper()}_"
+        for env_key, env_val in os.environ.items():
+            if env_key.startswith(prefix):
+                config_key = env_key[len(prefix) :].lower()
+                final_val = env_val
+                if isinstance(env_val, str) and (
+                    env_val.strip().startswith("{") or env_val.strip().startswith("[")
+                ):
+                    try:
+                        final_val = json.loads(env_val)
+                    except:
+                        pass
+                data[config_key] = final_val
+        return data
+
+    def get_repo_platforms(self) -> list:
+        """
+        获取配置的所有仓库平台名称。
+        """
+        repos_cfg = self._yaml_config.get("repos", {})
+        platforms = set(repos_cfg.keys()) if isinstance(repos_cfg, dict) else set()
+
+        for env_key in os.environ.keys():
+            if env_key.endswith("_REPOS"):
+                platform_name = env_key.replace("_REPOS", "").lower()
+                platforms.add(platform_name)
+
+        return sorted(list(platforms))
+
+    def get_platform(self, platform_name: str) -> dict:
+        """
+        根据平台名称获取配置。
+        """
+        return self.get_merged_config("platforms", platform_name)
+
+    def get_model(self, model_key: str) -> dict:
+        """
+        根据模型 key 获取配置。
+        """
+        return self.get_merged_config("models", model_key)
+
+
+# 导出全局单例配置对象，实例化时会自动触发初始化
+config = Config()
