@@ -9,7 +9,7 @@ from api import apis
 from common import config
 from request.hooks import use_request
 from common import load_all_tokens
-from common import app, send_auth_nudge
+from oauth import oauth_platform_manager
 from crawlers import CrawlerFactory
 from workflows import WorkflowFactory
 from exceptions import handle_logic_exception
@@ -103,7 +103,10 @@ def run_reporting_logic():
 def main():
     # 1. 启动 WebServer (OAuth 授权需要)
     server_thread = threading.Thread(
-        target=lambda: uvicorn.run(app, host="0.0.0.0", port=8001), daemon=True
+        target=lambda: uvicorn.run(
+            oauth_platform_manager.app, host="0.0.0.0", port=8001
+        ),
+        daemon=True,
     )
     server_thread.start()
 

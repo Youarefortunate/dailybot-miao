@@ -128,31 +128,33 @@ def get_token(open_id=None):
 
 
 @_auto_ensure_loaded
-def get_app_token(open_id=None):
+def get_app_token(open_id=None, force_refresh=False):
     """
     获取保存的自建应用 token。
     优化逻辑：内存 -> 临时变量 -> fetch_tenant_access_token
+    :param force_refresh: 是否强制在线刷新（跳过缓存）
     """
     global _temp_app_token
 
-    if open_id is None:
-        open_id = get_current_open_id()
+    if not force_refresh:
+        if open_id is None:
+            open_id = get_current_open_id()
 
-    # 1. 优先尝试从内存获取（已持久化的用户信息中）
-    info = _token_dict.get(open_id)
-    if info and info.get("app_token"):
-        logger.debug(
-            f"🎯 从内存获取到 open_id {open_id} 的 app_token: {info['app_token'][:10]}..."
-        )
-        return info["app_token"]
+        # 1. 优先尝试从内存获取（已持久化的用户信息中）
+        info = _token_dict.get(open_id)
+        if info and info.get("app_token"):
+            logger.debug(
+                f"🎯 从内存获取到 open_id {open_id} 的 app_token: {info['app_token'][:10]}..."
+            )
+            return info["app_token"]
 
-    # 2. 尝试从临时变量获取（授权过程中的中转）
-    if _temp_app_token:
-        logger.debug(f"⚡ 从临时变量获取到 app_token: {_temp_app_token[:10]}...")
-        return _temp_app_token
+        # 2. 尝试从临时变量获取（授权过程中的中转）
+        if _temp_app_token:
+            logger.debug(f"⚡ 从临时变量获取到 app_token: {_temp_app_token[:10]}...")
+            return _temp_app_token
 
     # 3. 在线换取并暂存
-    logger.info("🌐 内存和临时变量中未找到有效的 app_token，准备在线获取...")
+    logger.info("🌐 准备在线获取最新的 app_token...")
     new_token = fetch_tenant_access_token()
     if new_token:
         _temp_app_token = new_token

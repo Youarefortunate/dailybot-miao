@@ -36,7 +36,7 @@ class BaseDynamicManager:
 
         @functools.wraps(func)
         def wrapper(self, *args, **kwargs):
-            self._ensure_fully_discovered()
+            self.ensure_fully_discovered()
             return func(self, *args, **kwargs)
 
         return wrapper
@@ -75,7 +75,7 @@ class BaseDynamicManager:
             return self._registry[key_lower]
 
         # 3. 第三级：如果精准导入没找到，则进行全量扫描（仅执行一次）
-        self._ensure_fully_discovered()
+        self.ensure_fully_discovered()
 
         return self._registry.get(key_lower)
 
@@ -94,7 +94,7 @@ class BaseDynamicManager:
             except (ImportError, ModuleNotFoundError, KeyError):
                 continue
 
-    def _ensure_fully_discovered(self):
+    def ensure_fully_discovered(self):
         """
         全量扫描目录下的所有模块
         """

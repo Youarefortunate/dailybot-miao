@@ -77,18 +77,32 @@ class FeishuPlatform(BasePlatform):
             pass
         return False
 
-    def refresh_token(self, params=None):
+    def refresh_token(self, config=None):
         """
-        执行无感刷新：完全自闭环，使用 token_store 中封装的逻辑。
+        执行无感刷新。根据 auth_type 区分是刷新自建应用 Token 还是用户 Token。
         """
-        open_id = get_current_open_id()
-        if not open_id:
-            logger.warning(
-                "[Feishu] 刷新失败：未找到当前用户 open_id，尝试主动推送卡片让用户授权"
-            )
+        if config is None:
+            config = {}
+
+        auth_type = config.get("auth_type")
+
+        # 1. 如果是自建应用 Token 刷新
+        if auth_type == "app":
+            logger.info("[Feishu] 正在强制刷新自建应用 Token (app_token)...")
+            new_token = get_app_token(force_refresh=True)
+            if new_token:
+                self.token = new_token
+                logger.info("[Feishu] 自建应用 Token 刷新成功")
+                return new_token
             return None
 
-        logger.info(f"[Feishu] 正在为 {open_id} 进行自闭环无感刷新 (token_store)...")
+        # 2. 否则执行用户 Token 刷新
+        open_id = get_current_open_id()
+        if not open_id:
+            logger.warning("[Feishu] 刷新失败：未找到当前用户 open_id")
+            return None
+
+        logger.info(f"[Feishu] 正在为 {open_id} 进行用户 Token 无感刷新...")
 
         refresh_tk = get_refresh_token(open_id)
         if not refresh_tk:
@@ -99,8 +113,8 @@ class FeishuPlatform(BasePlatform):
             # 直接调用封装好的刷新逻辑
             new_token = refresh_user_token(open_id, refresh_tk)
             if new_token:
-                self.token = new_token  # 更新实例token
-                logger.info("[Feishu] 自闭环刷新成功 (token_store)")
+                self.token = new_token
+                logger.info("[Feishu] 用户 Token 刷新成功")
                 return new_token
         except Exception as e:
             logger.error(f"[Feishu] 刷新过程中出现异常: {e}")

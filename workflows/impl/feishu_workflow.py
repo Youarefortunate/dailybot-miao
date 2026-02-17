@@ -1,11 +1,10 @@
 import json
-from api import apiss
+from api import apis
 from loguru import logger
-from common import config
+from common import config, load_all_tokens
 from request.hooks import use_request
-from common import send_auth_nudge
+from oauth import oauth_platform_manager
 from providers import AIFactory
-from common import load_all_tokens
 from workflows.modules.base_workflow import BaseWorkflow
 
 
@@ -46,7 +45,7 @@ class FeishuWorkflow(BaseWorkflow):
             return False
 
         logger.warning(f"[{self.WORKFLOW_NAME}] 未发现有效授权，正在发送引导卡片...")
-        success, reason = send_auth_nudge()
+        success, reason = oauth_platform_manager.send_auth_nudge()
         if not success:
             logger.error(f"[{self.WORKFLOW_NAME}] 发送引导卡片失败: {reason}")
             return False

@@ -11,6 +11,7 @@ class BasePlatform:
 
     PLATFORM_NAME = "unknown"
     URL_PATTERN = None  # 支持正则或字符串
+    MAX_RETRY_LIMIT = 2
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -31,6 +32,8 @@ class BasePlatform:
         self.hostname = config.get("hostname", "")
         # 默认响应结构映射
         self.response_template = {"code": "code", "data": "data", "message": "message"}
+        # Token 刷新重试计数器
+        self._retry_count = 0
 
     def get_name(self):
         return self.name
@@ -50,15 +53,17 @@ class BasePlatform:
         """
         请求拦截器：自动注入 Auth Header
         """
-        # 自动获取 Token
-        token = self.get_token(params=config)
-        if token:
-            if "headers" not in config:
-                config["headers"] = {}
-            # 设置认证头
-            auth_header = self.get_auth_header(token)
-            if auth_header:
-                config["headers"]["Authorization"] = auth_header
+        if "headers" not in config:
+            config["headers"] = {}
+
+        # 请求头添加token
+        if "Authorization" not in config["headers"]:
+            token = self.get_token(params=config)
+            if token:
+                # 设置认证头
+                auth_header = self.get_auth_header(token)
+                if auth_header:
+                    config["headers"]["Authorization"] = auth_header
 
         # 设置平台特定的通用请求头
         headers = self.get_request_headers()
@@ -85,21 +90,41 @@ class BasePlatform:
 
         # 1. 检测 Token 过期 (身份认证类错误)
         if self._is_token_expired(response):
-            logger.warning(f"[{self.PLATFORM_NAME}] 检测到 Token 过期，尝试自动刷新...")
-            # 获取刷新用的参数（通常是 open_id）
-            auth_params = (
-                config.get("params", {})
-                if config.get("method") == "GET"
-                else config.get("json", {})
+            # 增加死循环保护逻辑
+            if self._retry_count >= self.MAX_RETRY_LIMIT:
+                logger.error(
+                    f"[{self.PLATFORM_NAME}] Token 刷新后重试仍失败，已达到最大重试次数 ({self.MAX_RETRY_LIMIT})，防止进入死循环。"
+                )
+                self._retry_count = 0  # 熔断导出前归零
+                return response
+
+            logger.warning(
+                f"[{self.PLATFORM_NAME}] 检测到 Token 过期，尝试自动刷新 (第 {self._retry_count + 1} 次尝试)..."
             )
-            new_token = self.refresh_token(auth_params)
+
+            # 执行刷新逻辑
+            # 直接传递完整的请求配置对象 config，以便平台实现（如 FeishuPlatform）能够获取所有上下文标识（如 auth_type）
+            self._retry_count += 1
+            new_token = self.refresh_token(config)
 
             if new_token:
                 logger.info(
-                    f"[{self.PLATFORM_NAME}] Token 刷新成功，正在重新发起原始请求..."
+                    f"[{self.PLATFORM_NAME}] Token 刷新成功，直接注入新 Token 并重新发起原始请求..."
                 )
-                # 重新调用请求方法，config 已经在 refresh 后会被 set_request_interceptors 重新处理
+
+                # 直接在 config 中设置最新的 Authorization 头，确确保重试请求直接通过
+                if "headers" not in config:
+                    config["headers"] = {}
+                config["headers"]["Authorization"] = self.get_auth_header(new_token)
+
+                # 递归重试
                 return http_request.request(config)
+            else:
+                # 如果刷新本身失败，也需要归零以便下次全新请求开始
+                self._retry_count = 0
+
+        # 2. 如果请求成功或遇到非 401 错误，重置计数器
+        self._retry_count = 0
 
         # 2. 处理常规响应
         if 200 <= response.status_code < 300:
