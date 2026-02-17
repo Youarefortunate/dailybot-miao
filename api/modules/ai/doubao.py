@@ -7,5 +7,3 @@ def get_doubao_api():
         # 聊天补全接口
         "chat_completions": "POST /chat/completions",
     }
-
-

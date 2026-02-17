@@ -57,7 +57,7 @@ class BasePlatform:
                 config["headers"] = {}
             # 设置认证头
             auth_header = self.get_auth_header(token)
-            if auth_header and "Authorization" not in config["headers"]:
+            if auth_header:
                 config["headers"]["Authorization"] = auth_header
 
         # 设置平台特定的通用请求头

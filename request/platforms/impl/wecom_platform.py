@@ -44,7 +44,11 @@ class WecomPlatform(BasePlatform):
         # 少量接口会额外包一层 data，这里兼容两种：
         # - 有 data 字段时，优先使用 data
         # - 没有 data 字段时，use_request 会返回整个 JSON
-        self.response_template = {"code": "errcode", "data": "data", "message": "errmsg"}
+        self.response_template = {
+            "code": "errcode",
+            "data": "data",
+            "message": "errmsg",
+        }
 
     # ---------- Token 获取与无感刷新 ----------
 
@@ -80,7 +84,6 @@ class WecomPlatform(BasePlatform):
             return None
 
         try:
-            # 使用统一的 use_request 请求体系获取企业微信应用 access_token
             token_req = use_request(apis.wecom_auth.get_token, {"loading": False})
             data = token_req.fetch() or {}
             errcode = data.get("errcode")
@@ -133,7 +136,7 @@ class WecomPlatform(BasePlatform):
             if not isinstance(params, dict):
                 params = {}
             params = params.copy()
-            params.setdefault("access_token", token)
+            params["access_token"] = token
             config["params"] = params
 
         # 仍然添加通用请求头（User-Agent 等）
@@ -150,5 +153,3 @@ class WecomPlatform(BasePlatform):
         headers = super().get_request_headers()
         headers.update({"Content-Type": "application/json; charset=utf-8"})
         return headers
-
-

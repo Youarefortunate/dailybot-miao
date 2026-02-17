@@ -99,6 +99,7 @@ class FeishuPlatform(BasePlatform):
             # 直接调用封装好的刷新逻辑
             new_token = refresh_user_token(open_id, refresh_tk)
             if new_token:
+                self.token = new_token  # 更新实例token
                 logger.info("[Feishu] 自闭环刷新成功 (token_store)")
                 return new_token
         except Exception as e:

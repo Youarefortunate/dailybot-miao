@@ -1,6 +1,6 @@
 import json
+from api import apiss
 from loguru import logger
-from api import apis
 from common import config
 from request.hooks import use_request
 from common import send_auth_nudge
@@ -19,8 +19,20 @@ class FeishuWorkflow(BaseWorkflow):
     _nudge_sent = False
 
     def __init__(self):
-        self.send_api = use_request(apis.feishu_app_im.send_message)
-        self.update_api = use_request(apis.feishu_app_im.update_message)
+        self._send_api = None
+        self._update_api = None
+
+    @property
+    def send_api(self):
+        if self._send_api is None:
+            self._send_api = use_request(apis.feishu_app_im.send_message)
+        return self._send_api
+
+    @property
+    def update_api(self):
+        if self._update_api is None:
+            self._update_api = use_request(apis.feishu_app_im.update_message)
+        return self._update_api
 
     def prepare(self) -> bool:
         """
