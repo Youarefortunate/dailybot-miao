@@ -95,11 +95,20 @@ class AIFactory(BaseAIProvider):
 
         # 2. 准备渲染上下文
         ai_prompts = prompts.get(self.AI_PROVIDER_NAME, {})
+        global_prompts = prompts.get("global", {})
 
-        system_prompt = self._get_prompt_attr(
-            ai_prompts, "system", "你是一个日报总结助手。"
-        )
-        user_template = self._get_prompt_attr(ai_prompts, "user", "")
+        # 获取系统提示词：AI 专用 -> 全局 -> 默认
+        system_prompt = self._get_prompt_attr(ai_prompts, "system", None)
+        if system_prompt is None:
+            system_prompt = self._get_prompt_attr(
+                global_prompts, "system", "你是一个日报总结助手。"
+            )
+
+        # 获取用户提示词模板：AI 专用 -> 全局 -> 默认
+        user_template = self._get_prompt_attr(ai_prompts, "user", None)
+        if user_template is None:
+            user_template = self._get_prompt_attr(global_prompts, "user", "")
+
         user_content = f"{user_template}\n{text}" if user_template else text
 
         # 优先从 cfg 取 model，这里不需要再手动拼接环境变量名，Config.get_model 已经处理了优先级

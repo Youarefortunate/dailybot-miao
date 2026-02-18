@@ -11,7 +11,7 @@ class HttpRequest:
             opts = {}
 
         self.session = requests.Session()
-        self.timeout = opts.get("timeout", 10)
+        self.timeout = opts.get("timeout", 60)
         self.base_url = opts.get("baseURL", "")
 
         self.before_functions = []
