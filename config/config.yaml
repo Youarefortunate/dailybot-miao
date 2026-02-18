@@ -2,7 +2,7 @@
 platforms:
   # 飞书
   feishu:
-    ai_model: "doubao"  # 该平台使用的总结模型
+    ai_model: "deepseek"  # 已切换为 DeepSeek 模型
     app_id: ""
     app_secret: ""
     bot_token: ""
@@ -54,14 +54,21 @@ models:
     base_url: ""
     model: ""
     params:
-      timeout: 3 # 设定3分钟超时
+      timeout: 60 # 设定1小时超时
   glm:
     name: "智谱清言大模型"
     api_key: ""
     base_url: ""
     model: ""
     params:
-      timeout: 10 # 智普的大模型思考和回答的时间可能会久一点
+      timeout: 60
+  deepseek:
+    name: "DeepSeek V3"
+    api_key: ""
+    base_url: ""
+    model: ""
+    params:
+      timeout: 60
 
 # 代码仓库配置
 repos:
