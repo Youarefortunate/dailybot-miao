@@ -2,7 +2,6 @@ import json
 import os
 import inspect
 from loguru import logger
-from api import apis
 from request.hooks import use_request
 from functools import wraps
 
@@ -83,6 +82,8 @@ def fetch_tenant_access_token():
     成功返回 token 字符串，失败时抛出异常让调用方处理。
     """
     try:
+        from api import apis
+
         req = use_request(apis.feishu_app_auth.get_tenant_token)
         data = req.fetch()
         token = data.get("tenant_access_token") if data else None
@@ -217,6 +218,8 @@ def refresh_user_token(open_id, refresh_token, tenant_access_token=None):
         if not tenant_access_token:
             logger.warning(f"open_id {open_id} 刷新由于缺少应用 Token 而中止")
             return None
+
+        from api import apis
 
         refresh_req = use_request(apis.feishu_user_auth.refresh_user_token)
         data = refresh_req.fetch(

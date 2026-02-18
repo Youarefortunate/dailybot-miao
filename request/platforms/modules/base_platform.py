@@ -1,3 +1,4 @@
+from loguru import logger
 from exceptions.result import Result
 from enums.result_code import ResultCode
 

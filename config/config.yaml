@@ -2,7 +2,7 @@
 platforms:
   # 飞书
   feishu:
-    ai_model: "deepseek"  # 已切换为 DeepSeek 模型
+    ai_model: "gemini"
     app_id: ""
     app_secret: ""
     bot_token: ""
@@ -69,6 +69,21 @@ models:
     model: ""
     params:
       timeout: 60
+  kimi:
+    name: "Kimi K2"
+    api_key: ""
+    base_url: ""
+    model: ""
+    params:
+      timeout: 60
+  gemini:
+    name: "Gemini 3 Flash Preview"
+    api_key: ""
+    base_url: ""
+    model: ""
+    params:
+      timeout: 60
+
 
 # 代码仓库配置
 repos:

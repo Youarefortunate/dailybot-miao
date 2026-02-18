@@ -56,7 +56,11 @@ class HttpRequest:
         method = config.get("method", "GET").upper()
         url = config.get("url", "")
         if not url.startswith("http") and self.base_url:
-            url = f"{self.base_url.rstrip('/')}/{url.lstrip('/')}"
+            url = (
+                f"{self.base_url.rstrip('/')}/{url.lstrip('/')}"
+                if url
+                else self.base_url
+            )
 
         params = config.get("params")
         data = config.get("data")
