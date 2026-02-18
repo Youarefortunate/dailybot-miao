@@ -1,5 +1,3 @@
-from loguru import logger
-from .platform_manager import platform_manager
 from exceptions.result import Result
 from enums.result_code import ResultCode
 
@@ -12,16 +10,6 @@ class BasePlatform:
     PLATFORM_NAME = "unknown"
     URL_PATTERN = None  # 支持正则或字符串
     MAX_RETRY_LIMIT = 2
-
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
-        # 自动将子类注册到平台管理器
-        if cls.PLATFORM_NAME != "unknown":
-            platform_manager.register_platform(cls.PLATFORM_NAME, cls)
-            if cls.URL_PATTERN:
-                platform_manager.register_url_pattern(
-                    cls.PLATFORM_NAME, cls.URL_PATTERN
-                )
 
     def __init__(self, config=None):
         if config is None:
