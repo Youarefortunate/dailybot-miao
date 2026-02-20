@@ -25,7 +25,7 @@ class FeishuPlatform(BasePlatform):
         self.response_template = {"code": "code", "data": "data", "message": "msg"}
         self.storage = get_platform_storage(self.PLATFORM_NAME)
 
-    def get_token(self, params=None):
+    async def get_token(self, params=None):
         """
         自动获取 Token。
         - 如果 config 中包含 auth_type="app"，则返回自建应用 Token。
@@ -36,17 +36,17 @@ class FeishuPlatform(BasePlatform):
 
         # 1. 如果请求的是自建应用 Token，直接调用获取
         if isinstance(params, dict) and params.get("auth_type") == "app":
-            return self.storage.get_app_token()
+            return await self.storage.get_app_token()
 
         # 2. 否则是获取用户 Token，此时必须有 open_id
-        open_id = self.storage.get_current_open_id()
+        open_id = await self.storage.get_current_open_id()
         if not open_id:
             logger.warning("[Feishu] 尝试获取用户 Token 但未找到有效的 open_id")
             return None
 
-        return self.storage.get_token(open_id)
+        return await self.storage.get_token(open_id)
 
-    def _is_token_expired(self, response):
+    async def _is_token_expired(self, response):
         """
         判断飞书 Token 是否过期或无效
         """
@@ -72,7 +72,7 @@ class FeishuPlatform(BasePlatform):
             pass
         return False
 
-    def refresh_token(self, config=None):
+    async def refresh_token(self, config=None):
         """
         执行无感刷新。根据 auth_type 区分是刷新自建应用 Token 还是用户 Token。
         """
@@ -84,7 +84,7 @@ class FeishuPlatform(BasePlatform):
         # 1. 如果是自建应用 Token 刷新
         if auth_type == "app":
             logger.info("[Feishu] 正在强制刷新自建应用 Token (app_token)...")
-            new_token = self.storage.get_app_token(force_refresh=True)
+            new_token = await self.storage.get_app_token(force_refresh=True)
             if new_token:
                 self.token = new_token
                 logger.info("[Feishu] 自建应用 Token 刷新成功")
@@ -92,7 +92,7 @@ class FeishuPlatform(BasePlatform):
             return None
 
         # 2. 否则执行用户 Token 刷新
-        open_id = self.storage.get_current_open_id()
+        open_id = await self.storage.get_current_open_id()
         if not open_id:
             logger.warning("[Feishu] 刷新失败：未找到当前用户 open_id")
             return None
@@ -101,7 +101,7 @@ class FeishuPlatform(BasePlatform):
 
         try:
             # 直接调用封装在 TokenStorage 中的高度内聚的刷新逻辑
-            new_token = self.storage.refresh_token(open_id)
+            new_token = await self.storage.refresh_token(open_id)
             if new_token:
                 self.token = new_token
                 logger.info("[Feishu] 用户 Token 刷新成功")
@@ -122,12 +122,12 @@ class FeishuPlatform(BasePlatform):
         230099: "机器人发送消息被飞书安全策略拦截",
     }
 
-    def set_response_interceptors(self, response, config, http_request):
+    async def set_response_interceptors(self, response, config, http_request):
         """
         飞书响应拦截器：调用基类逻辑实现通用解析，并增加飞书特有风控码检测。
         """
         # 调用基类实现（处理 Token 过期、HTTP 状态码、以及 Result 对象转换）
-        res = super().set_response_interceptors(response, config, http_request)
+        res = await super().set_response_interceptors(response, config, http_request)
 
         # 飞书特有的业务错误码深度检查 (风控场景)
         if isinstance(res, Result) and not res.is_success():
@@ -151,7 +151,7 @@ class FeishuPlatform(BasePlatform):
         headers.update({"Content-Type": "application/json; charset=utf-8"})
         return headers
 
-    def set_error_interceptors(self, error, config, http_request):
+    async def set_error_interceptors(self, error, config, http_request):
         """
         飞书错误拦截器：检测连接层异常。
         飞书风控的典型表现是请求发出后服务端直接断开连接、不返回任何响应。

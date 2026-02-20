@@ -1,8 +1,6 @@
-import json
+import asyncio
 import common.logger  # noqa: F401 (触发全局日志配置)
 from loguru import logger as log
-import threading
-import time
 from datetime import datetime
 import uvicorn
 from api import apis
@@ -13,14 +11,16 @@ from oauth import oauth_platform_manager
 from crawlers import CrawlerFactory
 from workflows import WorkflowFactory
 from exceptions import handle_logic_exception
+from request.core.http_request import HttpRequest
 
 
-def collect_all_reports():
-    """采集所有支持平台的提交数据，并汇总文本"""
+async def collect_all_reports():
+    """采集所有支持平台的提交数据，并汇总文本 (异步并行化)"""
     log.info("📋 正在采集所有平台的提交记录...")
 
     report_text = ""
     configured_platforms = config.get_repo_platforms()
+    crawl_tasks = []
 
     for platform in configured_platforms:
         crawler = CrawlerFactory.get_crawler(platform)
@@ -33,13 +33,20 @@ def collect_all_reports():
         log.info(f"🔍 正在执行 {platform} 平台的采集任务...")
         platform_upper = platform.upper()
         target_user = getattr(config, f"{platform_upper}_TARGET_USER", None)
+        crawl_tasks.append(crawler.crawl(target_user=target_user))
 
-        commits_map = crawler.crawl(target_user=target_user)
+    if not crawl_tasks:
+        return ""
+
+    # 并发执行所有平台的采集
+    results = await asyncio.gather(*crawl_tasks)
+
+    for i, commits_map in enumerate(results):
         if not commits_map:
             continue
 
-        # 生成提交部分文本
-        platform_report = f"\n  平台: {crawler.get_platform_name()}\n"
+        platform = configured_platforms[i]
+        platform_report = f"\n  平台: {platform.upper()}\n"
         for repo_name, date_groups in commits_map.items():
             platform_report += f"    仓库: {repo_name}\n"
             for date_str in sorted(date_groups.keys(), reverse=True):
@@ -52,98 +59,106 @@ def collect_all_reports():
     return report_text
 
 
-@handle_logic_exception
-def run_reporting_logic():
-    """多平台并行工作流逻辑：采集 → 平台反馈开始 → AI 总结 → 平台更新结果"""
+async def run_reporting_logic():
+    """全异步工作流：采集 -> AI 总结 -> 推送"""
     log.info("🎬 开始执行报告生成流程...")
 
-    # 0. 加载启用的工作流，默认启动feishu
-    enabled_workflow_names = getattr(config, "ENABLED_WORKFLOWS", ["feishu"])
+    enabled_workflow_names = getattr(config, "ENABLED_WORKFLOWS")
     active_workflows = []
+
+    # 初始化工作流
     for wf_name in enabled_workflow_names:
         wf = WorkflowFactory.get_workflow(wf_name)
-        if wf and wf.prepare():
+        if wf and await wf.prepare():
             active_workflows.append(wf)
 
     if not active_workflows:
         log.warning("⚠️ 没有可用的工作流，中止任务。")
         return
 
-    # 1. 数据采集
-    raw_report = collect_all_reports()
+    # 1. 异步数据采集
+    raw_report = await collect_all_reports()
     if not raw_report:
         log.warning("📭 今日没有任何可汇报的数据。")
-        # 即使没有数据，也尝试通知各平台以便展示“暂无记录”
         for wf in active_workflows:
             try:
-                # 传入空内容，触发工作流的暂无记录展示逻辑
-                wf.on_report_success("[]", {"raw_report": ""})
+                await wf.on_report_success("[]", {"raw_report": ""})
             except Exception as e:
                 log.error(f"发送暂无记录通知失败: {e}")
         return
 
-    log.info("🍟 采集到以下原始报文内容：")
+    log.info("🐠 采集到以下原始报文内容：")
     print("-" * 50)
     print(raw_report)
     print("-" * 50)
-    log.info(f"📊 采集完成，准备请求 AI 总结...")
 
-    # 2. 各平台起始反馈 (如发送占位卡片)
+    # 2. 并行起始反馈
     wf_contexts = []
-    for wf in active_workflows:
-        ctx = wf.on_report_start(raw_report)
-        wf_contexts.append((wf, ctx))
+    start_tasks = [wf.on_report_start(raw_report) for wf in active_workflows]
+    contexts = await asyncio.gather(*start_tasks)
+    for i, ctx in enumerate(contexts):
+        wf_contexts.append((active_workflows[i], ctx))
 
-    # 3. 各平台独立进行 AI 总结与分发最终结果
-    for wf, ctx in wf_contexts:
-        summary = wf.summarize(raw_report)
-        wf.on_report_success(summary, ctx)
+    # 3. 并行 AI 总结与成功回调
+    async def process_summary(wf, ctx):
+        try:
+            summary = await wf.summarize(raw_report)
+            await wf.on_report_success(summary, ctx)
+        except Exception as e:
+            log.error(f"工作流 {wf} 处理失败: {e}")
+
+    await asyncio.gather(*(process_summary(wf, ctx) for wf, ctx in wf_contexts))
 
 
-def main():
+@handle_logic_exception
+async def main():
     # 1. 启动 WebServer (OAuth 授权需要)
-    server_thread = threading.Thread(
-        target=lambda: uvicorn.run(
-            oauth_platform_manager.app, host="0.0.0.0", port=8001
-        ),
-        daemon=True,
+    config_server = uvicorn.Config(
+        oauth_platform_manager.app, host="0.0.0.0", port=8001, log_level="error"
     )
-    server_thread.start()
+    server = uvicorn.Server(config_server)
+    server_task = asyncio.create_task(server.serve())
 
-    # 2. 授权等待逻辑 (简化并通用化)
+    # 2. 授权等待逻辑
     timeout_seconds = 60
-    start_wait = time.time()
-
-    # 提前准备工作流（由于 Feishu 需要引导，这里会触发引导）
-    enabled_workflow_names = getattr(config, "ENABLED_WORKFLOWS", ["feishu"])
+    start_wait = datetime.now()
 
     log.info("⏳ 检查环境就绪状态...")
-    while True:
-        # 如果检测到启用的任意平台内存在已授权映射
-        tokens_map = load_all_tokens()
-        if any(v for v in tokens_map.values()):
-            log.info("✨ 授权检测通过。")
-            break
+    enabled_workflow_names = getattr(config, "ENABLED_WORKFLOWS")
 
-        if time.time() - start_wait > timeout_seconds:
-            log.warning("⏱️ 授权轮询超时。")
-            # 如果是 feishu 以外的平台可能不需要 token，这里我们根据实际情况决定是否继续
-            break
-
-        # 触发工作流准备（针对飞书会发送引导卡片，由于有单例检测，多次调用不会重复发送）
-        for wf_name in enabled_workflow_names:
-            wf = WorkflowFactory.get_workflow(wf_name)
-            if wf:
-                wf.prepare()
-
-        time.sleep(10)
-
-    # 3. 执行核心逻辑
     try:
-        run_reporting_logic()
-    except Exception as e:
-        log.error(f"❌ 程序执行异常: {e}")
+        while True:
+            tokens_map = await load_all_tokens()
+            if any(v for v in tokens_map.values()):
+                log.info("✨ 授权检测通过。")
+                break
+
+            if (datetime.now() - start_wait).total_seconds() > timeout_seconds:
+                log.warning("⏱️ 授权轮询超时。")
+                break
+
+            # 触发工作流准备
+            for wf_name in enabled_workflow_names:
+                wf = WorkflowFactory.get_workflow(wf_name)
+                if wf:
+                    await wf.prepare()
+
+            await asyncio.sleep(5)
+
+        # 3. 执行核心逻辑
+        await run_reporting_logic()
+    finally:
+        # 清理资源
+        log.info("🧹 程序运行结束，清理资源...")
+        await HttpRequest.close_all()
+        server.should_exit = True
+        await server_task
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
+    except Exception as e:
+        log.exception(f"Fatal error: {e}")

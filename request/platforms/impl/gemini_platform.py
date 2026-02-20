@@ -28,11 +28,11 @@ class GeminiPlatform(BasePlatform):
             "message": "error.message",
         }
 
-    def get_token(self, params=None):
+    async def get_token(self, params=None):
         """Gemini 使用 API Key 认证，不使用 Bearer Token"""
         return None
 
-    def set_request_interceptors(self, config):
+    async def set_request_interceptors(self, config):
         """
         Gemini 专用请求拦截器：注入 x-goog-api-key 并清理 Authorization
         """
@@ -52,6 +52,6 @@ class GeminiPlatform(BasePlatform):
 
         return config
 
-    def _is_token_expired(self, response):
+    async def _is_token_expired(self, response):
         """Gemini 使用 API Key，通常不涉及 Token 过期重试"""
         return False

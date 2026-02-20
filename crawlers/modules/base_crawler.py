@@ -37,7 +37,7 @@ class BaseCrawler(ABC):
         pass
 
     @abstractmethod
-    def fetch_repo_commits(
+    async def fetch_repo_commits(
         self, repo_path: str, branch: str, since: str, until: str
     ) -> list:
         """
@@ -142,9 +142,9 @@ class BaseCrawler(ABC):
         u = until[:10]
         return s if s == u else f"{s}~{u}"
 
-    def crawl(self, target_user=None) -> dict:
+    async def crawl(self, target_user=None) -> dict:
         """
-        模板方法：定义爬取的标准流程
+        模板方法：定义爬取的标准流程 (异步并行化)
         """
         all_commits = {}
         platform_name = self.get_platform_name()
@@ -154,21 +154,17 @@ class BaseCrawler(ABC):
             logger.info(f"Ø 平台 {platform_name} 未配置任何仓库，跳过。")
             return all_commits
 
-        for repo in repos_config:
+        # 构造并发任务列表
+        async def crawl_repo(repo):
             repo_path = repo["path"]
             branch_raw = repo.get("branch", "master")
-            repo_name = repo_path.split("/")[-1]
 
             # 支持多分支
             branches = [b.strip() for b in branch_raw.split(",") if b.strip()]
+            date_ranges = self._parse_crawl_dates(repo.get("crawl_dates"))
 
-            # 解析日期配置
-            crawl_dates = repo.get("crawl_dates", None)
-            date_ranges = self._parse_crawl_dates(crawl_dates)
-
-            # 用于去重
             seen_ids = set()
-            grouped_messages = {}
+            repo_grouped = {}
 
             for branch in branches:
                 for since, until in date_ranges:
@@ -179,7 +175,8 @@ class BaseCrawler(ABC):
                     )
 
                     try:
-                        raw_commits = self.fetch_repo_commits(
+                        # 核心异步调用
+                        raw_commits = await self.fetch_repo_commits(
                             repo_path, branch, since, until
                         )
                         if not raw_commits or not isinstance(raw_commits, list):
@@ -192,11 +189,9 @@ class BaseCrawler(ABC):
                             if not commit_id or commit_id in seen_ids:
                                 continue
 
-                            # 过滤逻辑
                             if self._should_skip_commit(commit_data):
                                 continue
 
-                            # 用户过滤
                             author_name = commit_data.get("author_name", "")
                             author_email = commit_data.get("author_email", "")
                             if target_user:
@@ -207,43 +202,43 @@ class BaseCrawler(ABC):
                                 ):
                                     continue
 
-                            # 时间处理与分组
                             created_at = commit_data.get("created_at", "")
-                            date_key = "未知日期"
-                            time_display = ""
+                            date_key, time_display = "未知日期", ""
                             if created_at:
                                 try:
-                                    # 兼容不同平台的 ISO 格式或直接解析
                                     t_obj = datetime.fromisoformat(
                                         created_at.replace("Z", "+00:00")
                                     ).astimezone(_TZ)
                                     date_key = t_obj.strftime("%Y-%m-%d")
-                                    time_display = t_obj.strftime("%Y-%m-%d %H:%M")
-                                except Exception:
+                                    time_display = t_obj.strftime("%H:%M")
+                                except:
                                     pass
 
-                            message = commit_data.get("message", "")
                             seen_ids.add(commit_id)
-                            grouped_messages.setdefault(date_key, []).append(
-                                f"[{time_display}] {message}"
+                            repo_grouped.setdefault(date_key, []).append(
+                                f"[{time_display}] {commit_data.get('message', '')}"
                             )
-
                     except Exception as e:
                         logger.opt(colors=True).error(
                             f"爬取 <magenta>{repo_path}</magenta> 失败: {e}"
                         )
 
-            if grouped_messages:
-                # 获取仓库别名（项目名）
-                repo_alias = repo.get("name")
+            return repo_path, repo.get("name"), repo_grouped
+
+        # 使用 asyncio.gather 实现多仓库并发爬取
+        import asyncio
+
+        results = await asyncio.gather(*(crawl_repo(repo) for repo in repos_config))
+
+        for repo_path, repo_alias, grouped in results:
+            if grouped:
                 display_name = (
                     f"{repo_path} ({repo_alias})" if repo_alias else repo_path
                 )
-                all_commits[display_name] = grouped_messages
-
-                count = sum(len(msgs) for msgs in grouped_messages.values())
+                all_commits[display_name] = grouped
+                count = sum(len(msgs) for msgs in grouped.values())
                 logger.opt(colors=True).info(
-                    f"仓库 <magenta>{repo_path}</magenta> 找到 <red>{count}</red> 条符合条件的提交"
+                    f"仓库 <magenta>{repo_path}</magenta> 找到 <red>{count}</red> 条提交"
                 )
 
         return all_commits

@@ -19,11 +19,13 @@ class BaseTokenStorage:
         self._data = data or {}
         self.factory = None  # 延迟注入工厂实现持久化
 
-    def get_token(self, identifier: Optional[str] = None, **kwargs) -> Optional[str]:
+    async def get_token(
+        self, identifier: Optional[str] = None, **kwargs
+    ) -> Optional[str]:
         """获取访问令牌 (Access Token)，供子类重写。identifier用于区分用户，应用级可传None"""
         raise NotImplementedError
 
-    def get_app_token(
+    async def get_app_token(
         self, identifier: Optional[str] = None, **kwargs
     ) -> Optional[str]:
         """
@@ -32,7 +34,7 @@ class BaseTokenStorage:
         """
         return None
 
-    def refresh_token(
+    async def refresh_token(
         self, identifier: Optional[str] = None, **kwargs
     ) -> Optional[str]:
         """
@@ -41,7 +43,7 @@ class BaseTokenStorage:
         """
         return None
 
-    def save_token(self, identifier: str, **kwargs):
+    async def save_token(self, identifier: str, **kwargs):
         """
         保存令牌及其关联数据
         不同平台的 Token 结构不同（如有效期、刷新令牌）。统一定义为 kwargs 让子类解析。

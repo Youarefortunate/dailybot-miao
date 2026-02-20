@@ -27,14 +27,14 @@ def use_request(api, config=None):
 
     state = RequestState(loading=config.get("loading", False))
 
-    def fetch(*args, **kwargs):
+    async def fetch(*args, **kwargs):
         state.loading = True
         try:
             if not callable(api):
                 raise ValueError("api 不是函数")
 
-            # 响应结果
-            result = api(*args, **kwargs)
+            # 异步执行 API 调用
+            result = await api(*args, **kwargs)
 
             # 如果已经是 Result 对象（由 BasePlatform 拦截器封装），则直接处理
             if isinstance(result, ApiResponse):

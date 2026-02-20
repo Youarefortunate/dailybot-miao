@@ -50,7 +50,7 @@ class FeishuOATHPlatform(BaseOATHPlatform):
         open_id = None
         try:
             # fetch 在成功时返回数据字典，失败时会抛出异常 (use_request 内部逻辑)
-            res_data = token_api.fetch({"code": code})
+            res_data = await token_api.fetch({"code": code})
             if not res_data:
                 raise BusinessException(msg="授权服务器返回数据为空")
 
@@ -66,10 +66,10 @@ class FeishuOATHPlatform(BaseOATHPlatform):
                 f"[{self.OATH_PLATFORM_NAME}] 🔄 正在为用户 {open_id} 获取自建应用 Token..."
             )
 
-            app_token = self.storage.get_app_token()
+            app_token = await self.storage.get_app_token()
 
             # 一起存入 token_storage
-            self.storage.save_token(
+            await self.storage.save_token(
                 identifier=open_id,
                 access_token=access_token,
                 refresh_token=refresh_token,
@@ -82,7 +82,7 @@ class FeishuOATHPlatform(BaseOATHPlatform):
             logger.info(
                 f"[{self.OATH_PLATFORM_NAME}] ✅ 授权成功，准备为用户 {open_id} 发送成功提示..."
             )
-            self.send_success_card(open_id)
+            await self.send_success_card(open_id)
 
             return HTMLResponse("<h2>授权成功！请返回终端查看进度。</h2>")
 
@@ -92,14 +92,14 @@ class FeishuOATHPlatform(BaseOATHPlatform):
 
             # 如果能拿到 open_id，尝试向用户推送失败通知
             if open_id:
-                self.send_failure_card(open_id, error_msg)
+                await self.send_failure_card(open_id, error_msg)
 
             # 抛出异常以触发 GlobalExceptionHandler
             if isinstance(e, BusinessException):
                 raise e
             raise BusinessException(msg=f"授权失败: {error_msg}")
 
-    def send_success_card(self, open_id):
+    async def send_success_card(self, open_id):
         """发送授权成功卡片"""
         card = {
             "config": {"wide_screen_mode": True},
@@ -126,7 +126,7 @@ class FeishuOATHPlatform(BaseOATHPlatform):
         }
 
         try:
-            self.req.fetch(
+            await self.req.fetch(
                 {
                     "params": {"receive_id_type": "open_id"},
                     "receive_id": open_id,  # 直接推送到用户
@@ -140,7 +140,7 @@ class FeishuOATHPlatform(BaseOATHPlatform):
         except Exception as e:
             logger.warning(f"[{self.OATH_PLATFORM_NAME}] ⚠️ 推送授权成功反馈失败: {e}")
 
-    def send_failure_card(self, open_id, reason):
+    async def send_failure_card(self, open_id, reason):
         """发送授权失败卡片"""
         card = {
             "config": {"wide_screen_mode": True},
@@ -167,7 +167,7 @@ class FeishuOATHPlatform(BaseOATHPlatform):
         }
 
         try:
-            self.req.fetch(
+            await self.req.fetch(
                 {
                     "params": {"receive_id_type": "open_id"},
                     "receive_id": open_id,
@@ -181,7 +181,7 @@ class FeishuOATHPlatform(BaseOATHPlatform):
         except Exception as e:
             logger.warning(f"[{self.OATH_PLATFORM_NAME}] ⚠️ 推送授权失败反馈失败: {e}")
 
-    def send_auth_nudge(self):
+    async def send_auth_nudge(self):
         """
         飞书特定的授权引导逻辑
         """
@@ -219,7 +219,7 @@ class FeishuOATHPlatform(BaseOATHPlatform):
         }
 
         try:
-            self.req.fetch(
+            await self.req.fetch(
                 {
                     "receive_id": config.FEISHU_TARGET_CHAT_ID,
                     "content": json.dumps(card),

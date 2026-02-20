@@ -1,3 +1,4 @@
+import asyncio
 import traceback
 import functools
 from loguru import logger
@@ -39,10 +40,20 @@ class GlobalExceptionHandler:
 def handle_logic_exception(func):
     """
     逻辑异常处理装饰器，用于非 Web 环境（如 main.py）
+    支持同步 (def) 和 异步 (async def) 函数
     """
 
     @functools.wraps(func)
-    def wrapper(*args, **kwargs):
+    async def async_wrapper(*args, **kwargs):
+        try:
+            return await func(*args, **kwargs)
+        except BusinessException as e:
+            logger.warning(f"💡 逻辑执行警告: {e.msg} (Code: {e.code})")
+        except Exception as e:
+            logger.error(f"🚨 逻辑执行崩溃: {str(e)}\n{traceback.format_exc()}")
+
+    @functools.wraps(func)
+    def sync_wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
         except BusinessException as e:
@@ -50,4 +61,7 @@ def handle_logic_exception(func):
         except Exception as e:
             logger.error(f"🚨 逻辑执行崩溃: {str(e)}\n{traceback.format_exc()}")
 
-    return wrapper
+    # 自动识别函数类型并返回对应的包装器
+    if asyncio.iscoroutinefunction(func):
+        return async_wrapper
+    return sync_wrapper

@@ -17,7 +17,7 @@ class GeminiAI(AIFactory):
         # 绑定已注册的 api 模块
         self.api_reqs["chat_completions"] = use_request(apis.ai_gemini.chat_completions)
 
-    def summarize(self, text: str) -> str:
+    async def summarize(self, text: str) -> str:
         """
         Gemini 专用的请求封装，仅负责构造符合规范的 Payload
         """
@@ -37,7 +37,7 @@ class GeminiAI(AIFactory):
                 cfg["params"] = {}
             cfg["params"]["model"] = model_id
 
-        return super().summarize(text)
+        return await super().summarize(text)
 
     def _parse_response(self, res_data: any) -> str:
         """

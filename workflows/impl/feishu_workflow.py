@@ -34,19 +34,19 @@ class FeishuWorkflow(BaseWorkflow):
             self._update_api = use_request(apis.feishu_app_im.update_message)
         return self._update_api
 
-    def prepare(self) -> bool:
+    async def prepare(self) -> bool:
         """
         检查飞书授权，若无有效 Token 则发起 Nudge
         """
         storage = get_platform_storage(self.WORKFLOW_NAME)
-        if storage.get_current_open_id():
+        if await storage.get_current_open_id():
             return True
 
         if FeishuWorkflow._nudge_sent:
             return False
 
         logger.warning(f"[{self.WORKFLOW_NAME}] 未发现有效授权，正在发送引导卡片...")
-        success, reason = oauth_platform_manager.send_auth_nudge()
+        success, reason = await oauth_platform_manager.send_auth_nudge()
         if not success:
             logger.error(f"[{self.WORKFLOW_NAME}] 发送引导卡片失败: {reason}")
             return False
@@ -56,7 +56,7 @@ class FeishuWorkflow(BaseWorkflow):
         # 注意：这里我们只负责发起引导，外层 main.py 会负责全局的轮询等待
         return True
 
-    def on_report_start(self, raw_report: str) -> dict:
+    async def on_report_start(self, raw_report: str) -> dict:
         """
         发送“正在总结”占位卡片
         """
@@ -83,7 +83,7 @@ class FeishuWorkflow(BaseWorkflow):
         }
 
         try:
-            res = self.send_api.fetch(
+            res = await self.send_api.fetch(
                 {
                     "receive_id": config.FEISHU_TARGET_CHAT_ID,
                     "content": json.dumps(placeholder_card),
@@ -104,7 +104,7 @@ class FeishuWorkflow(BaseWorkflow):
             logger.error(f"[{self.WORKFLOW_NAME}] 发送占位卡片失败: {e}")
             return {"raw_report": raw_report}
 
-    def summarize(self, raw_report: str) -> str:
+    async def summarize(self, raw_report: str) -> str:
         """
         使用配置指定的模型进行总结
         """
@@ -127,9 +127,9 @@ class FeishuWorkflow(BaseWorkflow):
         logger.info(
             f"[{self.WORKFLOW_NAME}] 正在调度 {model_name} (model_id: {model_id}) 模型生成总结..."
         )
-        return ai_instance.summarize(raw_report)
+        return await ai_instance.summarize(raw_report)
 
-    def on_report_success(self, summary: str, context: dict):
+    async def on_report_success(self, summary: str, context: dict):
         """
         更新飞书卡片为最终总结内容 (支持 JSON 结构化卡片)
         """
@@ -170,7 +170,7 @@ class FeishuWorkflow(BaseWorkflow):
 
         if message_id:
             try:
-                self.update_api.fetch(
+                await self.update_api.fetch(
                     {
                         "message_id": message_id,
                         "content": json.dumps(card),
@@ -183,7 +183,7 @@ class FeishuWorkflow(BaseWorkflow):
                 logger.error(f"[{self.WORKFLOW_NAME}] 更新消息失败: {e}")
         else:
             # 备选方案：直接发送新消息
-            self._send_raw(card)
+            await self._send_raw(card)
 
     def _build_daily_card(self, items: list, raw_report: str = "") -> dict:
         """
@@ -252,11 +252,11 @@ class FeishuWorkflow(BaseWorkflow):
             "elements": elements,
         }
 
-    def _send_raw(self, card):
+    async def _send_raw(self, card):
         if not config.FEISHU_TARGET_CHAT_ID:
             return
         try:
-            self.send_api.fetch(
+            await self.send_api.fetch(
                 {
                     "receive_id": config.FEISHU_TARGET_CHAT_ID,
                     "content": json.dumps(card),

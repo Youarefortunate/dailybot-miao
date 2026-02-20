@@ -38,7 +38,7 @@ class BaseOATHPlatform:
     def get_oath_platform_name(self):
         return self.OATH_PLATFORM_NAME
 
-    def send_auth_nudge(self):
+    async def send_auth_nudge(self):
         """
         主动推送授权引导（Nudge）。
         子类需实现具体的推送逻辑。

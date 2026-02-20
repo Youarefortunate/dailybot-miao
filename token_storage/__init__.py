@@ -73,7 +73,7 @@ def get_platform_storage(platform: str) -> BaseTokenStorage:
     return token_storage_manager.get_storage_instance(platform, factory=get_factory())
 
 
-def load_all_tokens():
+async def load_all_tokens():
     """
     加载所有 Token 数据
     """

@@ -69,7 +69,7 @@ class AIFactory(BaseAIProvider):
             return obj.get(attr, default)
         return getattr(obj, attr, default)
 
-    def summarize(self, text: str) -> str:
+    async def summarize(self, text: str) -> str:
         """
         AI 总结实现，支持动态负载模板和严格配置校验
         """
@@ -150,7 +150,7 @@ class AIFactory(BaseAIProvider):
 
         # 5. 执行请求
         try:
-            res_data = chat_req.fetch(payload)
+            res_data = await chat_req.fetch(payload)
             return self._parse_response(res_data)
         except Exception as e:
             logger.error(f"[{self.AI_PROVIDER_NAME}] 总结请求异常: {str(e)}")

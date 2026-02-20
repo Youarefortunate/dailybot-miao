@@ -1,5 +1,6 @@
 import json
 import os
+import asyncio
 from threading import RLock
 from typing import Optional, Any, Dict
 from loguru import logger
@@ -16,6 +17,7 @@ class FileTokenFactory:
         self.file_path = file_path
         self._data: Dict[str, Any] = {}
         self._lock = RLock()
+        self._async_lock = asyncio.Lock()  # 异步协程锁
         self.load()
 
     def load(self):
@@ -55,22 +57,31 @@ class FileTokenFactory:
 
     def get_platform_data(self, platform: str) -> Dict[str, Any]:
         """获取指定平台的数据副本"""
-        self.load()
         with self._lock:
             platform_key = platform.lower()
             return self._data.get(platform_key, {}).copy()
 
     def get_all(self) -> Dict[str, Any]:
         """获取所有平台的数据副本"""
-        self.load()
         with self._lock:
             return self._data.copy()
 
-    def set_platform_entry(self, platform: str, key: str, value: Any):
+    async def set_platform_entry(self, platform: str, key: str, value: Any):
         """设置某个平台的单条条目并触发保存"""
-        with self._lock:
-            platform_key = platform.lower()
-            if platform_key not in self._data:
-                self._data[platform_key] = {}
-            self._data[platform_key][key] = value
-            self.save()
+        async with self._async_lock:
+            with self._lock:
+                platform_key = platform.lower()
+                if platform_key in self._data:
+                    # 合并逻辑：如果已存在，则合并内部字段
+                    if isinstance(
+                        self._data[platform_key].get(key), dict
+                    ) and isinstance(value, dict):
+                        self._data[platform_key][key].update(value)
+                    else:
+                        self._data[platform_key][key] = value
+                else:
+                    self._data[platform_key] = {key: value}
+
+            # 持久化也需要改造成异步/线程安全
+            # 重要：必须在释放 self._lock 后再执行，否则 to_thread 里的 save 会产生死锁
+            await asyncio.to_thread(self.save)

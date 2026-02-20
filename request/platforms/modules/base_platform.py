@@ -30,15 +30,15 @@ class BasePlatform:
     def get_base_url(self):
         return self.base_url
 
-    def get_token(self, params=None):
+    async def get_token(self, params=None):
         """获取 Token，子类需实现具体的凭证获取逻辑"""
         return self.token
 
-    def refresh_token(self, params=None):
+    async def refresh_token(self, params=None):
         """重新获取/刷新 Token，子类需实现"""
         return None
 
-    def set_request_interceptors(self, config):
+    async def set_request_interceptors(self, config):
         """
         请求拦截器：自动注入 Auth Header
         """
@@ -47,7 +47,7 @@ class BasePlatform:
 
         # 请求头添加token
         if "Authorization" not in config["headers"]:
-            token = self.get_token(params=config)
+            token = await self.get_token(params=config)
             if token:
                 # 设置认证头
                 auth_header = self.get_auth_header(token)
@@ -71,14 +71,14 @@ class BasePlatform:
             "User-Agent": "MCP-Audit-Client/1.0",
         }
 
-    def set_response_interceptors(self, response, config, http_request):
+    async def set_response_interceptors(self, response, config, http_request):
         """
         响应拦截器：处理成功响应，并检测 Token 过期触发重试逻辑
         """
         response.response_template = self.response_template
 
         # 1. 检测 Token 过期 (身份认证类错误)
-        if self._is_token_expired(response):
+        if await self._is_token_expired(response):
             # 增加死循环保护逻辑
             if self._retry_count >= self.MAX_RETRY_LIMIT:
                 logger.error(
@@ -94,7 +94,7 @@ class BasePlatform:
             # 执行刷新逻辑
             # 直接传递完整的请求配置对象 config，以便平台实现（如 FeishuPlatform）能够获取所有上下文标识（如 auth_type）
             self._retry_count += 1
-            new_token = self.refresh_token(config)
+            new_token = await self.refresh_token(config)
 
             if new_token:
                 logger.info(
@@ -106,8 +106,8 @@ class BasePlatform:
                     config["headers"] = {}
                 config["headers"]["Authorization"] = self.get_auth_header(new_token)
 
-                # 递归重试
-                return http_request.request(config)
+                # 递归重试 (必须 await 异步请求)
+                return await http_request.request(config)
             else:
                 # 如果刷新本身失败，也需要归零以便下次全新请求开始
                 self._retry_count = 0
@@ -161,7 +161,7 @@ class BasePlatform:
             error_data = self._parse_error_data(response)
             raise self.create_error(response.status_code, error_data)
 
-    def _is_token_expired(self, response):
+    async def _is_token_expired(self, response):
         """子类需实现此方法来判断 Token 是否过期"""
         return False
 
@@ -173,7 +173,7 @@ class BasePlatform:
             pass
         return response.text
 
-    def set_error_interceptors(self, error, config, http_request):
+    async def set_error_interceptors(self, error, config, http_request):
         # 简单处理 Python 异常到自定义错误的转换
         raise error
 
@@ -198,15 +198,17 @@ class BasePlatform:
         http_request.set_base_url(self.get_base_url())
 
         # 设置拦截器
-        http_request.set_req_interceptors(
-            lambda config: self.set_request_interceptors(config)
-        )
+        # 改用 async def 闭包，确保 HttpRequest 能够 await
+        async def req_interceptor(config):
+            return await self.set_request_interceptors(config)
 
-        http_request.set_res_interceptors(
-            lambda response, config: self.set_response_interceptors(
-                response, config, http_request
-            ),
-            lambda error, config: self.set_error_interceptors(
-                error, config, http_request
-            ),
-        )
+        http_request.set_req_interceptors(req_interceptor)
+
+        # 改用 async def 闭包，确保 HttpRequest 能够 await
+        async def res_interceptor(response, config):
+            return await self.set_response_interceptors(response, config, http_request)
+
+        async def err_interceptor(error, config):
+            return await self.set_error_interceptors(error, config, http_request)
+
+        http_request.set_res_interceptors(res_interceptor, err_interceptor)

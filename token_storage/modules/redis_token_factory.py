@@ -48,7 +48,7 @@ class RedisTokenFactory:
             logger.error(f"从 Redis 加载平台 {platform} 的 Token 失败: {e}")
             return {}
 
-    def set_platform_entry(self, platform: str, key: str, value: Any):
+    async def set_platform_entry(self, platform: str, key: str, value: Any):
         """设置某个平台的单条用户条目"""
         # 拦截机制：只有在 config.ENABLED_WORKFLOWS 中的平台才允许写入 Redis 本地存储，其余被过滤
         enabled_workflows = getattr(config, "ENABLED_WORKFLOWS", [])

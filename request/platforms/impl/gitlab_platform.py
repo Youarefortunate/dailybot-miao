@@ -25,7 +25,7 @@ class GitlabPlatform(BasePlatform):
         # 根据使用习惯，我们设置数据层为 None 表示返回整个响应体
         self.response_template = {"code": "id", "data": None, "message": "message"}
 
-    def get_token(self, params=None):
+    async def get_token(self, params=None):
         """
         获取 GitLab Access Token
         """
@@ -33,11 +33,11 @@ class GitlabPlatform(BasePlatform):
             return self.token
         return config.GITLAB_TOKEN
 
-    def set_request_interceptors(self, config_dict):
+    async def set_request_interceptors(self, config_dict):
         """
         GitLab 特有拦截器：使用 Private-Token 认证
         """
-        token = self.get_token()
+        token = await self.get_token()
         if token:
             if "headers" not in config_dict:
                 config_dict["headers"] = {}
@@ -51,7 +51,7 @@ class GitlabPlatform(BasePlatform):
         config_dict["headers"].update(headers)
         return config_dict
 
-    def _is_token_expired(self, response):
+    async def _is_token_expired(self, response):
         """
         判断 GitLab Token 是否失效 (通常返回 401)
         """

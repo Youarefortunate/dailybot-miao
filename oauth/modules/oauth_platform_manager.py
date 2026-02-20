@@ -98,7 +98,7 @@ class OATHPlatformManager(BaseDynamicManager):
             return inst
         return None
 
-    def send_auth_nudge(self):
+    async def send_auth_nudge(self):
         """
         通用授权引导调度器。
         """
@@ -112,7 +112,7 @@ class OATHPlatformManager(BaseDynamicManager):
             inst = self._get_instance(platform_name)
             if inst:
                 logger.info(f"[OATH] 正在尝试调度平台引导: {platform_name}")
-                success, reason = inst.send_auth_nudge()
+                success, reason = await inst.send_auth_nudge()
                 results.append((success, reason))
             else:
                 logger.warning(f"[OATH] 未找到平台实现: {platform_name}")

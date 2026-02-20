@@ -114,16 +114,22 @@ class ApiRegister:
         config_fn, current_platform = self._get_config_builder(value, module_platform)
 
         # 2. 构造最终的包装函数
-        def api_method(payload=None):
+        async def api_method(payload=None):
             if payload is None:
                 payload = {}
 
+            # 将 payload 转换为 DotDict，以便在配置生成函数中使用
+            p = DotDict(payload) if isinstance(payload, dict) else payload
+
             # 解析配置
-            data = config_fn(payload) if callable(config_fn) else data
+            if callable(config_fn):
+                data = config_fn(p)
+            else:
+                data = p if isinstance(p, dict) else {}
 
             # 执行钩子 (Hook 系统允许外部拦截请求参数)
             for hook in self._hooks:
-                hook(data)
+                data = hook(data) or data
 
             if isinstance(data, dict):
                 # 优先级: 接口返回的 platform > 模块定义的 platform > 全局默认平台
@@ -137,7 +143,10 @@ class ApiRegister:
 
                 # 获取对应平台的请求实例并发起请求
                 platform_request = self._get_platform_request(req_platform, req_url)
-                return platform_request(data)
+
+                if platform_request:
+                    return await platform_request(data)
+
             return data
 
         # 3. 注入唯一的 ID 标识，方便日志追踪
