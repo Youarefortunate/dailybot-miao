@@ -1,6 +1,7 @@
 import os
 import yaml
 import json
+from typing import Any
 from loguru import logger
 from dotenv import load_dotenv
 
@@ -120,27 +121,11 @@ class Config:
 
     def get_merged_config(self, category: str, name: str) -> dict:
         """
-        核心合并逻辑。
+        核心合并逻辑 (现已完全复用 get() 方法的链式取值与环境变量合并机制)。
         """
-        base_cfg = self._yaml_config.get(category, {}).get(name, {})
-        if not isinstance(base_cfg, dict):
-            base_cfg = {}
-
-        data = base_cfg.copy()
-        prefix = f"{name.upper()}_"
-        for env_key, env_val in os.environ.items():
-            if env_key.startswith(prefix):
-                config_key = env_key[len(prefix) :].lower()
-                final_val = env_val
-                if isinstance(env_val, str) and (
-                    env_val.strip().startswith("{") or env_val.strip().startswith("[")
-                ):
-                    try:
-                        final_val = json.loads(env_val)
-                    except:
-                        pass
-                data[config_key] = final_val
-        return data
+        path = f"{category}.{name}"
+        res = self.get(path, default={})
+        return res if isinstance(res, dict) else {}
 
     def get_repo_platforms(self) -> list:
         """
@@ -167,6 +152,55 @@ class Config:
         根据模型 key 获取配置。
         """
         return self.get_merged_config("models", model_key)
+
+    def get(self, path: str, default: Any = None) -> Any:
+        """
+        按路径 (基于 . 分隔) 动态获取 YAML 配置，并用环境变量覆盖 (若存在)。
+        示例：get("redis.host") 或 get("platforms.feishu.bot_token")
+        """
+        # 第一步：查看是否被单项环境变量/动态属性作为基础标量完全覆盖
+        env_attr = self.path_to_env_key(path)
+        if hasattr(self, env_attr) and not isinstance(getattr(self, env_attr), dict):
+            return getattr(self, env_attr)
+
+        # 第二步：在字典树中深层查询基础配置
+        keys = path.split(".")
+        current = self._yaml_config
+
+        found = True
+        for key in keys:
+            if isinstance(current, dict) and key in current:
+                current = current[key]
+            else:
+                found = False
+                break
+
+        base_val = current if found else default
+
+        # 第三步：如果查出来的是字典，还需要进行类似 get_merged_config 的环境变量前缀覆盖探测
+        if isinstance(base_val, dict):
+            # 将基准字典深层拷贝防止污染原 yaml
+            data = base_val.copy()
+            # 环境变量前缀格式处理，如 path="models.doubao" 时对应的前缀为 "DOUBAO_"
+            # 如果 path 长于 1，则以前最后一段为前缀进行探测比较贴合项目现存设定。
+            last_key = keys[-1]
+            prefix = f"{last_key.upper()}_"
+            for env_key, env_val in os.environ.items():
+                if env_key.startswith(prefix):
+                    config_key = env_key[len(prefix) :].lower()
+                    final_val = env_val
+                    if isinstance(env_val, str) and (
+                        env_val.strip().startswith("{")
+                        or env_val.strip().startswith("[")
+                    ):
+                        try:
+                            final_val = json.loads(env_val)
+                        except:
+                            pass
+                    data[config_key] = final_val
+            return data
+
+        return base_val
 
 
 # 导出全局单例配置对象，实例化时会自动触发初始化

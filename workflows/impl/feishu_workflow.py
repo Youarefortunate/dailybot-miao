@@ -1,11 +1,12 @@
 import json
 from api import apis
 from loguru import logger
-from common import config, load_all_tokens
+from common import config
 from request.hooks import use_request
 from oauth import oauth_platform_manager
 from providers import AIFactory
 from workflows.modules.base_workflow import BaseWorkflow
+from token_storage import get_platform_storage
 
 
 class FeishuWorkflow(BaseWorkflow):
@@ -37,8 +38,8 @@ class FeishuWorkflow(BaseWorkflow):
         """
         检查飞书授权，若无有效 Token 则发起 Nudge
         """
-        tokens = load_all_tokens()
-        if tokens:
+        storage = get_platform_storage(self.WORKFLOW_NAME)
+        if storage.get_current_open_id():
             return True
 
         if FeishuWorkflow._nudge_sent:

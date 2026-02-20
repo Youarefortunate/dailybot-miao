@@ -8,7 +8,7 @@ import uvicorn
 from api import apis
 from common import config
 from request.hooks import use_request
-from common import load_all_tokens
+from token_storage import load_all_tokens
 from oauth import oauth_platform_manager
 from crawlers import CrawlerFactory
 from workflows import WorkflowFactory
@@ -119,8 +119,9 @@ def main():
 
     log.info("⏳ 检查环境就绪状态...")
     while True:
-        # 如果检测到任意授权成功，则尝试开始
-        if load_all_tokens():
+        # 如果检测到启用的任意平台内存在已授权映射
+        tokens_map = load_all_tokens()
+        if any(v for v in tokens_map.values()):
             log.info("✨ 授权检测通过。")
             break
 

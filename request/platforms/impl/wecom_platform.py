@@ -3,11 +3,7 @@ from loguru import logger
 from api import apis
 from ..modules.base_platform import BasePlatform
 from ...hooks.use_request import use_request
-
-
-# 简单的进程内缓存，用于存储企业微信 access_token 及过期时间
-_WECOM_ACCESS_TOKEN = None
-_WECOM_TOKEN_EXPIRES_AT = 0
+from token_storage import get_platform_storage
 
 
 class WecomPlatform(BasePlatform):
@@ -49,24 +45,15 @@ class WecomPlatform(BasePlatform):
             "data": "data",
             "message": "errmsg",
         }
+        self.storage = get_platform_storage(self.PLATFORM_NAME)
 
     # ---------- Token 获取与无感刷新 ----------
-
-    def _get_cached_token(self):
-        """
-        从进程内缓存获取 token，若未过期则返回。
-        """
-        global _WECOM_ACCESS_TOKEN, _WECOM_TOKEN_EXPIRES_AT
-        now = time.time()
-        if _WECOM_ACCESS_TOKEN and now < _WECOM_TOKEN_EXPIRES_AT:
-            return _WECOM_ACCESS_TOKEN
-        return None
 
     def get_token(self, params=None):
         """
         覆盖基类：企业微信使用应用级 access_token，与单个用户无关。
         """
-        token = self._get_cached_token()
+        token = self.storage.get_token("corp_app")
         if token:
             return token
         # 本平台忽略 params，由 corp_id + corp_secret 重新获取 token
@@ -77,8 +64,6 @@ class WecomPlatform(BasePlatform):
         通过企业微信的 gettoken 接口获取 / 刷新应用级 access_token。
         文档：https://developer.work.weixin.qq.com/document/path/91039
         """
-        global _WECOM_ACCESS_TOKEN, _WECOM_TOKEN_EXPIRES_AT
-
         if not self.corp_id or not self.corp_secret:
             logger.warning("[WeCom] 缺少 corp_id 或 corp_secret，无法刷新 access_token")
             return None
@@ -91,9 +76,10 @@ class WecomPlatform(BasePlatform):
                 access_token = data.get("access_token")
                 expires_in = data.get("expires_in", 7200)
 
-                # 留出一定缓冲时间，避免边界时刻过期
-                _WECOM_ACCESS_TOKEN = access_token
-                _WECOM_TOKEN_EXPIRES_AT = time.time() + max(0, expires_in - 300)
+                # 持久化存储应用维度的 Token
+                self.storage.save_token(
+                    "corp_app", access_token=access_token, expires_in=expires_in
+                )
 
                 logger.info("[WeCom] access_token 刷新成功")
                 return access_token

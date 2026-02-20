@@ -5,8 +5,8 @@ from fastapi.responses import HTMLResponse
 from common.config import config
 from request.hooks import use_request
 from exceptions import BusinessException
-from common.token_store import save_token, get_app_token, clear_temp_app_token
 from ..modules.base_oauth_platform import BaseOATHPlatform
+from token_storage import get_platform_storage
 
 
 class FeishuOATHPlatform(BaseOATHPlatform):
@@ -19,6 +19,7 @@ class FeishuOATHPlatform(BaseOATHPlatform):
     def __init__(self, config=None):
         super().__init__(config)
         self._req = None
+        self.storage = get_platform_storage(self.OATH_PLATFORM_NAME)
 
     @property
     def req(self):
@@ -64,12 +65,18 @@ class FeishuOATHPlatform(BaseOATHPlatform):
             logger.info(
                 f"[{self.OATH_PLATFORM_NAME}] 🔄 正在为用户 {open_id} 获取自建应用 Token..."
             )
-            app_token = get_app_token()
 
-            # 一起存入 token_store
-            save_token(open_id, access_token, refresh_token, app_token=app_token)
+            app_token = self.storage.get_app_token()
+
+            # 一起存入 token_storage
+            self.storage.save_token(
+                identifier=open_id,
+                access_token=access_token,
+                refresh_token=refresh_token,
+                app_token=app_token,
+            )
             # 授权成功后，清空临时 app_token 变量
-            clear_temp_app_token()
+            self.storage.clear_temp_app_token()
 
             # 授权成功后发送精美通知卡片
             logger.info(

@@ -3,19 +3,23 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 import main
 import json
 import os
-from common import refresh_user_token, get_refresh_token
+from common.config import config
+from token_storage import get_platform_storage, load_all_tokens
 
 
 def refresh_all_tokens():
-    """刷新所有用户的access_token"""
-    if os.path.exists("token.json"):
-        with open("token.json", "r", encoding="utf-8") as f:
-            token_data = json.load(f)
+    """动态刷新配置启用的平台及所有用户的 access_token"""
+    tokens = load_all_tokens()
 
-        for open_id in token_data.keys():
-            refresh_token = get_refresh_token(open_id)
-            if refresh_token:
-                refresh_user_token(open_id, refresh_token)
+    enabled_workflows = getattr(config, "ENABLED_WORKFLOWS", [])
+
+    for platform in enabled_workflows:
+        platform_key = platform.lower()
+        platform_tokens = tokens.get(platform_key, {})
+        storage = get_platform_storage(platform_key)
+
+        for identifier in platform_tokens.keys():
+            storage.refresh_token(identifier)
 
 
 def job():

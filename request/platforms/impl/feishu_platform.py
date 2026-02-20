@@ -2,15 +2,9 @@ from loguru import logger
 from api import apis
 from common import config
 from ..modules.base_platform import BasePlatform
-from common import (
-    get_refresh_token,
-    get_token as get_user_token,
-    get_app_token,
-    refresh_user_token,
-    get_current_open_id,
-)
 from ...hooks.use_request import use_request
 from exceptions.result import Result
+from token_storage import get_platform_storage
 
 
 class FeishuPlatform(BasePlatform):
@@ -29,6 +23,7 @@ class FeishuPlatform(BasePlatform):
         super().__init__(config_dict)
         # 飞书特有的响应结构: code, data, msg
         self.response_template = {"code": "code", "data": "data", "message": "msg"}
+        self.storage = get_platform_storage(self.PLATFORM_NAME)
 
     def get_token(self, params=None):
         """
@@ -41,15 +36,15 @@ class FeishuPlatform(BasePlatform):
 
         # 1. 如果请求的是自建应用 Token，直接调用获取
         if isinstance(params, dict) and params.get("auth_type") == "app":
-            return get_app_token()
+            return self.storage.get_app_token()
 
         # 2. 否则是获取用户 Token，此时必须有 open_id
-        open_id = get_current_open_id()
+        open_id = self.storage.get_current_open_id()
         if not open_id:
             logger.warning("[Feishu] 尝试获取用户 Token 但未找到有效的 open_id")
             return None
 
-        return get_user_token(open_id)
+        return self.storage.get_token(open_id)
 
     def _is_token_expired(self, response):
         """
@@ -89,7 +84,7 @@ class FeishuPlatform(BasePlatform):
         # 1. 如果是自建应用 Token 刷新
         if auth_type == "app":
             logger.info("[Feishu] 正在强制刷新自建应用 Token (app_token)...")
-            new_token = get_app_token(force_refresh=True)
+            new_token = self.storage.get_app_token(force_refresh=True)
             if new_token:
                 self.token = new_token
                 logger.info("[Feishu] 自建应用 Token 刷新成功")
@@ -97,21 +92,16 @@ class FeishuPlatform(BasePlatform):
             return None
 
         # 2. 否则执行用户 Token 刷新
-        open_id = get_current_open_id()
+        open_id = self.storage.get_current_open_id()
         if not open_id:
             logger.warning("[Feishu] 刷新失败：未找到当前用户 open_id")
             return None
 
         logger.info(f"[Feishu] 正在为 {open_id} 进行用户 Token 无感刷新...")
 
-        refresh_tk = get_refresh_token(open_id)
-        if not refresh_tk:
-            logger.warning("[Feishu] 刷新失败：未找到有效 refresh_token")
-            return None
-
         try:
-            # 直接调用封装好的刷新逻辑
-            new_token = refresh_user_token(open_id, refresh_tk)
+            # 直接调用封装在 TokenStorage 中的高度内聚的刷新逻辑
+            new_token = self.storage.refresh_token(open_id)
             if new_token:
                 self.token = new_token
                 logger.info("[Feishu] 用户 Token 刷新成功")

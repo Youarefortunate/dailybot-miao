@@ -1,210 +1,152 @@
-# 🚀 Multi-Bot: 多平台智能自动化助手
+# 🐱 日报喵 (DailyBot): 多平台智能日报自动化助手
 
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
-[![Architecture](https://img.shields.io/badge/architecture-Modular-orange.svg)]()
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)[![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)[![AI-Powered](https://img.shields.io/badge/AI-Gemini%20%7C%20Doubao-red.svg)]()[![Architecture](https://img.shields.io/badge/architecture-Modular-orange.svg)]()
 
-> **Multi-Bot** 是一款工业级、高度可扩展的自动化办公助手框架。它能够跨平台采集数据（GitLab 提交记录、飞书任务等），利用尖端 AI 大模型进行深度总结，并精准推送至多元化终端（飞书、企业微信等）。
+> **日报喵** 是一款工业级、高度可扩展的自动化办公助手。它能精准采集多源数据（GitLab 提交记录、项目进展等），利用 Google Gemini 或字节豆包等主流大模型进行深度语义总结，并以精美的交互式卡片形式推送至飞书、企业微信等平台。
 
 ---
 
 ## ✨ 核心特性
 
-- 🧩 **高度插件化**：爬虫 (Crawlers)、AI 供应商 (Providers)、推送工作流 (Workflows) 均实现完全解耦，支持秒级动态接入。
-- 🔍 **多源数据采集**：内置 GitLab 活跃度采集、飞书任务跟踪等模块，支持多账号、多仓库并行采集。
-- 🤖 **灵活 AI 驱动**：兼容豆包 (Doubao)、GPT 等主流大模型，支持通过 `AIFactory` 实现动态模型切换。
-- 🛡️ **工业级架构**：
-  - **统一响应契约**：全系统遵循 Spring Boot 风格的 `Result` 响应规范。
-  - **全局异常治理**：内置 `GlobalExceptionHandler` 与 `handle_logic_exception` 装饰器，确保系统健壮性。
-  - **无感 OAuth 流程**：完善的 Token 存储、自动刷新及请求重试机制。
-- ⚙️ **配置驱动**：全功能通过 `config.yaml` 灵活配置，无需修改核心代码即可调整业务规则。
+- 🚀 **全自动日报流**：从原始 Commit 爬取到 AI 智能总结，再到推送，全链路自动化，无需人工干预。
+- 🧩 **高度组件化架构**：
+  - **平台插件 (Platforms)**：专用适配器（如 `GeminiPlatform`），完美处理特定认证与链路逻辑。
+  - **AI 提供商 (Providers)**：支持 Gemini 3 Flash、豆包、智谱等，支持“零代码”配置接入新模型。
+  - **无缝 OAuth**：内置完善的 Token 存储与自动刷新机制，彻底告别 401 困扰。
+- 🤖 **顶尖 AI 能力**：针对日报场景深度优化的 Prompt 系统，让总结更具逻辑性与可读性。
+- 📊 **精美推送卡片**：支持飞书交互式卡片，具备“原位更新”能力，显著减少消息打扰。
+- 🛡️ **生产级稳定性**：统一响应契约 (Result 类)、全局异常治理、自动重试机制。
 
 ---
 
 ## 🏗️ 系统架构
 
-项目采用“中心化发现，分布式实现”的架构模式：
+项目采用“单一职责，动态发现”的架构模式：
 
 ```mermaid
 graph TD
-    subgraph "Data Source (Crawlers)"
+    subgraph "数据源采集 (Crawlers)"
         G[GitLab]
-        F[Feishu Task]
-        O[...Others]
+        O[...更多扩展]
     end
 
-    subgraph "Core Engine"
-        M[Main Process]
-        DM[Dynamic Manager]
-        RM[Request Module]
+    subgraph "核心引擎 (Core)"
+        M[Main Flow]
+        PM[Platform Manager]
+        AM[AI Manager]
+        REQ[HttpRequest]
     end
 
-    subgraph "AI Brain (Providers)"
-        D[Doubao AI]
-        S[...Others]
+    subgraph "AI 智脑 (AI Providers)"
+        GM[Gemini AI]
+        DB[Doubao AI]
+        OT[...OpenAI兼容模型]
     end
 
-    subgraph "Delivery (Workflows)"
-        FW[Feishu Workflow]
-        WW[WeCom Workflow]
-        TW[...Others]
+    subgraph "交付终端 (Workflows)"
+        FS[Feishu Workflow]
+        WC[WeCom Workflow]
     end
 
-    G & F & O --> M
-    M --> DM
-    DM --> D & S
-    D & S --> M
-    M --> FW & WW & TW
+    G --> M
+    M --> PM
+    PM --> FS & WC & GM
+    M --> AM
+    AM --> GM & DB & OT
+    M --> FS
 ```
 
 ---
 
----
-
-## 📂 目录架构
+## 📂 目录导航
 
 ```text
 DailyBot/
-├── common/              # 公共模块（配置、日志、Token 存储、OAuth FastAPI）
-├── tasks/               # 任务模块（定时推送调度器）
-├── api/                 # 接口定义（各平台 API 配置，支持动态加载）
-├── crawlers/            # 爬虫实现（GitLab、飞书任务等采集逻辑）
-├── providers/           # AI 供应商（豆包等大模型适配）
-├── request/             # 请求核心（Hooks、平台拦截器、HTTP 封装）
-├── workflows/           # 工作流（报告生成流程编排）
-├── enums/               # 通用枚举
-├── exceptions/          # 异常处理（全局拦截与逻辑异常）
+├── api/                 # 声明式 API 定义（支持路径占位符替换）
+├── common/              # 公共模块（配置中心、Token 持久化存储）
+├── crawlers/            # 采集器实现（目前支持 GitLab 活跃度采集）
+├── providers/           # AI 驱动层（负责 Payload 构造与响应解析）
+├── request/             # 请求核心（包含 Hook 机制与各平台专属拦截器）
+│   ├── platforms/       # 平台插件实现（如 feishu, gemini 专属逻辑）
+│   └── core/            # HTTP 封装与 URL 鲁棒性治理
+├── workflows/           # 业务流程编排（占位卡片、原位更新、差异化分发）
 ├── config/              # 物理配置文件 (config.yaml)
-├── logs/                # 运行时日志
-└── main.py              # 程序主入口
+└── main.py              # 程序启动入口
 ```
 
 ---
 
-## 🧩 模块导览
+## ⚙️ 快速配置 (`config.yaml`)
 
-| 目录 | 职责说明 | 关键特性 |
-| :-- | :-- | :-- |
-| `common/` | 公共基础设施 | 统一配置加载、JSDoc 风格日志、无感 Token 刷新机制 |
-| `tasks/` | 自动化调度 | 基于 APScheduler 的定时推送任务管理 |
-| `api/` | 声明式 API | 支持按平台/功能模块化定义接口，动态加载至 `apis` 对象 |
-| `crawlers/` | 数据采集层 | 支持 GitLab/飞书任务，自动去重与时间窗口过滤 |
-| `providers/` | AI 适配层 | 统一个性化 Prompt，支持不同模型的能力平滑适配 |
-| `workflows/` | 业务流编排 | 支持卡片占位、消息原位更新、多平台分发任务 |
-| `request/` | 插件化请求库 | 统一的 `use_request` 模式，内置多平台请求拦截器 |
-| `utils/` | 通用工具类 | 类型转换、动态管理等基础工具 |
-
----
-
-## ⚙️ 配置指南
-
-项目所有的核心逻辑均可通过 `config/config.yaml` 进行高度定制。
-
-### 1. 完整配置示例 (`config.yaml`)
+项目所有行为均通过 `config/config.yaml` 驱动，无需修改代码。
 
 ```yaml
-# ---------------------------------------------------------
-# 1. 平台基础配置 (决定推送终端的行为)
-# ---------------------------------------------------------
+# 1. 终端平台配置
 platforms:
   feishu:
-    ai_model: "doubao"            # 该工作流默认使用的 AI 总结模型
-    app_id: "cli_..."             # 飞书自建应用 ID
-    app_secret: "..."             # 飞书自建应用 Secret
-    target_chat_id: "oc_..."      # 目标接收群 ID
-    oauth_redirect_uri: "..."     # OAuth 回调地址
+    ai_model: "gemini"            # 指定该平台使用的 AI 模型
+    target_chat_id: "oc_..."      # 飞书群 ID
+    standup_time: "09:00"         # 预定的日报发送时间
     base_url: "https://open.feishu.cn"
 
-  wecom:
-    ai_model: "doubao"
-    corp_id: "ww..."              # 企业微信 CorpID
-    corp_secret: "..."            # 应用 Secret
-
-# ---------------------------------------------------------
-# 2. AI 模型供应商配置
-# ---------------------------------------------------------
+# 2. AI 模型库 (Gemini/豆包/自定义)
 models:
-  doubao:
-    api_key: "..."                # 豆包 API Key
-    base_url: "..."               # 接口网关地址
-    model: "doubao-pro-4k"        # 使用的具体模型 ID
+  gemini:
+    name: "Gemini 3 Flash"
+    api_key: "AIzaSy..."          # 您的 Google API Key
+    base_url: "https://generativelanguage.googleapis.com/v1beta"
+    model: "gemini-3-flash-preview"
+    params:
+      timeout: 60                 # 超时配置(s)
 
-# ---------------------------------------------------------
-# 3. 采集源 (爬虫) 配置
-# ---------------------------------------------------------
+  doubao:
+    name: "豆包 Pro"
+    api_key: "..."
+    base_url: "..."
+    model: "ep-..."
+
+# 3. 数据采集源 (GitLab)
 repos:
   gitlab:
-    token: "..."                  # GitLab Private Token 或 Personal Access Token
-    base_url: "https://git..."    # 您的 GitLab 地址
-    target_user: "username"       # 默认要统计提交记录的用户 (可选)
+    token: "..."                  # GitLab 访问令牌
+    base_url: "http://git..."
+    target_user: "your_name"
     repos:
-      # 简易配置
-      - path: "group/project-a"
+      - path: "project/path"
         branch: "master"
-        name: "核心业务后台"      # 在日报中显示的别名
-      
-      # 进阶配置：指定爬取日期区间
-      - path: "frontend/ui-library"
-        branch: "develop"
-        name: "组件库"
-        crawl_dates:
-          - "2026-01-01, 2026-01-08"  # 支持日期区间
-          - "2026-02-10"              # 支持单日日期
-
-# ---------------------------------------------------------
-# 4. 全局调度开关
-# ---------------------------------------------------------
-# 启用的工作流，名称必须与 platforms 中的 key 对应
-enabled_workflows: ["feishu", "wecom"]
-
-# 日志级别: DEBUG, INFO, WARNING, ERROR
-log:
-  level: "INFO"
-```
-
-### 2. 扩展配置深度解析
-
-#### 🧩 动态日期爬取 (`crawl_dates`)
-如果您需要补录旧的报告或进行周期性回顾，可以在仓库配置中添加 `crawl_dates` 数组。
-- **单日格式**: `"YYYY-MM-DD"`
-- **区间格式**: `"START_DATE, END_DATE"` (以英文逗号分隔)
-> [!TIP]
-> 如果省略该配置，爬虫会自动获取 **当前日期** 的提交记录。
-
-#### 🏷️ 仓库别名 (`name`)
-为了让生成的日报更具可读性，建议为每个仓库配置 `name` 字段。AI 在生成总结时会优先使用该别名，从而避免展示冗长的项目路径。
-
-#### 🔄 多工作流并行 (`enabled_workflows`)
-系统支持同时向多个终端推送。例如，您可以配置 `enabled_workflows: ["feishu", "wecom"]`，系统会为 GitLab 的同一采集结果，分别触发飞书和企业微信的总结与推送流程。
-
----
-
-## 🛠️ 高级用法
-
-### 统一异常处理范式
-在任何业务方法中，您只需抛出 `BusinessException` 或使用 `@handle_logic_exception`：
-
-```python
-from exceptions.base import BusinessException
-from exceptions.handler import handle_logic_exception
-
-@handle_logic_exception
-def process_data():
-    if not data:
-        raise BusinessException(msg="采集数据为空")
+        name: "我的核心项目"
 ```
 
 ---
 
-## 🚀 快速开始
+## 🛠️ 高级特性说明
+
+### 1. URL 鲁棒性拼接
+系统内置了智能 URL 治理逻辑，自动处理 `base_url` 与相对路径之间的斜杠关系，有效规避 Google API 对尾部斜杠极其敏感导致的 404 错误。
+
+### 2. 插件发现机制
+通过 `PlatformManager` 采用懒加载与按需同步技术，系统会自动优选对应的平台插件（如 `GeminiPlatform`）来接管请求生命周期，实现认证头（Header）的纯净注入。
+
+### 3. 环境隔离与覆盖
+所有配置项均支持通过 `.env` 环境变量进行覆盖，方便在容器化环境（如 Docker/K8s）中动态部署。
+
+---
+
+## 🚀 启动指南
 
 ```bash
-# 初始化环境
-python -m venv .venv
-source .venv/bin/activate
+# 1. 安装依赖
 pip install -r requirements.txt
 
-# 运行系统
+# 2. 配置秘钥
+cp .env.example .env  # 填写您的 API Key 等敏感信息
+
+# 3. 开启猫咪
 python main.py
 ```
+
+---
+
+## 📄 开源协议
+本项目遵循 [MIT License](LICENSE) 协议。
 

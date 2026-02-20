@@ -2,7 +2,7 @@
 platforms:
   # 飞书
   feishu:
-    ai_model: "gemini"
+    ai_model: "deepseek"
     app_id: ""
     app_secret: ""
     bot_token: ""
@@ -112,3 +112,10 @@ enabled_workflows: ["feishu"]
 # 通用配置（无分类前缀）
 log:
   level: "INFO"
+
+# Redis Token 存储配置
+redis:
+  host: 127.0.0.1
+  port: 6379
+  password: ""
+  database: 0
