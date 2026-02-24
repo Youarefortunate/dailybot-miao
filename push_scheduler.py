@@ -52,9 +52,9 @@ async def run_job():
 
 
 def is_date_match(config_dates, target_date: datetime):
-    """判断 target_date 是否在 config_dates 定义的范围内"""
+    """判断 target_date 是否在 config_dates 定义的范围内。如果未配置日期，则默认为每天都匹配。"""
     if not config_dates:
-        return False
+        return True
 
     target_str = target_date.strftime("%Y-%m-%d")
     target_month = target_date.strftime("%Y-%m")
@@ -163,12 +163,13 @@ def setup_scheduler():
         now = datetime.now()
         logger.info(f"--- 规划今日 ({now.strftime('%Y-%m-%d')}) 的推送任务 ---")
 
-        executed_today = False
         today_match_tasks = []
+        date_matched_tasks = []
 
         for task in tasks:
             # 1. 检查日期
             if is_date_match(task.get("dates"), now):
+                date_matched_tasks.append(task)
                 # 2. 检查星期
                 weekdays = task.get("weekdays", [1, 2, 3, 4, 5, 6, 7])
                 if now.isoweekday() in weekdays:
@@ -189,27 +190,29 @@ def setup_scheduler():
                     )
                 else:
                     logger.info(f"匹配到任务 {run_time}，但今日该时间已过，跳过。")
-            executed_today = True
+        else:
+            # 3. 兜底逻辑：只有在今日没有任何任务属于“计划内”时，才触发保底逻辑。
+            # 如果 date_matched_tasks 不为空，说明今天本来是有任务的，只是被星期过滤了，此时不应保底触发。
+            if not date_matched_tasks:
+                all_expired = check_all_expired(tasks, now)
+                if all_expired:
+                    logger.info("所有配置日期已过期或未配置日期，触发保底逻辑。")
+                else:
+                    logger.info("今日不符合任何任务的日期规则，尝试保底逻辑。")
 
-        # 3. 兜底逻辑：如果今日不匹配，或者所有配置已过期
-        if not today_match_tasks:
-            all_expired = check_all_expired(tasks, now)
-            if all_expired:
-                logger.info("所有配置日期已过期或未配置日期，触发保底逻辑。")
+                h, m = map(int, default_time.split(":"))
+                if now.hour < h or (now.hour == h and now.minute < m):
+                    logger.info(f"安排保底推送时间：今日 {default_time}")
+
+                    scheduler.add_job(
+                        lambda: asyncio.run(run_job()),
+                        "date",
+                        run_date=now.replace(hour=h, minute=m, second=0, microsecond=0),
+                    )
+                else:
+                    logger.info(f"保底时间 {default_time} 已过，今日无任务。")
             else:
-                logger.info("今日不符合任何任务的日期/星期规则，尝试保底逻辑。")
-
-            h, m = map(int, default_time.split(":"))
-            if now.hour < h or (now.hour == h and now.minute < m):
-                logger.info(f"安排保底推送时间：今日 {default_time}")
-
-                scheduler.add_job(
-                    lambda: asyncio.run(run_job()),
-                    "date",
-                    run_date=now.replace(hour=h, minute=m, second=0, microsecond=0),
-                )
-            else:
-                logger.info(f"保底时间 {default_time} 已过，今日无任务。")
+                logger.info("今日任务已由星期规则排除，无需保底触发，进入静默状态。")
 
     # 每天 00:00:05 执行一次规划
     scheduler.add_job(plan_today_jobs, CronTrigger(hour=0, minute=0, second=5))

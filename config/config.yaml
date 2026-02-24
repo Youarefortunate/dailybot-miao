@@ -100,8 +100,8 @@ repos:
         name: "农融易小程序"
         # 爬取日期配置（不传则默认爬取当天）
         # 支持单个日期或日期区间，每个元素以逗号分隔起止日期
-        crawl_dates:
-          - "2026-01-4"
+        # crawl_dates:
+        #   - "2026-01-4"
       - path: "frontend_b2bwings/b2b-wings-easyloan-admin"
         branch: "test"
         name: "农融易后台管理系统"
@@ -114,12 +114,11 @@ scheduler:
   enabled: true
   auto_start: true # 开机自启
   # 兜底执行时间 (如果今日不符合任何 tasks 规则，或配置全过期)
-  default_time: "22:21"
-  # tasks: # 指定特定时间运行
-  #   - # 示例：二月工作日 18:20 运行
-  #     dates: ["2026-02"]
-  #     time: "18:20"
-  #     weekdays: [1, 2, 3, 4, 5]  # 双休
+  default_time: "18:20"
+  tasks: # 指定特定时间运行
+    - # 示例：二月工作日 18:20 运行
+      time: "18:20"
+      weekdays: [1, 2, 3, 4, 5]  # 双休
   #   - # 示例：特定日期特定时间
   #     dates: ["2026-02-27"]
   #     time: "20:00"
