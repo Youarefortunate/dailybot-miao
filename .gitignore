@@ -7,3 +7,4 @@ token.json
 .ruff_cache
 logs/
 js/
+.browser_profiles

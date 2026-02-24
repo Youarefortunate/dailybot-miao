@@ -9,3 +9,4 @@ lark-oapi>=1.5.3
 pyyaml>=6.0.0
 gitpython>=3.1.0
 redis>=4.0.0
+winshell>=0.6
