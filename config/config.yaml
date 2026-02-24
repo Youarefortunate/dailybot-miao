@@ -127,7 +127,11 @@ scheduler:
 
 # 日志配置
 log:
-  level: "INFO"
+  level: "INFO"          # 控制台输出级别
+  file_level: "DEBUG"    # 文件保存级别
+  rotation: "00:00"      # 日志轮转时间 (每天零点)
+  retention: "7 days"    # 日志保留时间
+  path: "logs/dailybot_{time:YYYY-MM-DD}.log" # 日志路径模板
 
 # Redis Token 存储配置
 redis:
