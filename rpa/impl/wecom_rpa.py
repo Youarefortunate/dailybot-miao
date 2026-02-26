@@ -376,7 +376,8 @@ class WeComRPA(BaseRPA):
                 if error_msg:
                     retry_count += 1
                     logger.warning(
-                        f"[{self.RPA_NAME}] 检测到页面报错 '{error_text}' (第 {retry_count} 次)，正在从表单地址重新访问..."
+                        f"[{self.RPA_NAME}] 检测到页面报错 '{error_text}' (第 {retry_count} 次)。\n"
+                        f"提示：这可能是因为账号被风控或链接失效。如果多次刷新无效，请尝试手动在浏览器中打开链接确认，或更新 config.yaml 中的 form_url。"
                     )
                     await self.page.goto(self.form_url)
                     # 重新访问后给予更长的加载缓冲，避免连续报错
@@ -390,6 +391,7 @@ class WeComRPA(BaseRPA):
 
         if not silent:
             logger.error(
-                f"[{self.RPA_NAME}] 页面加载持续失败 (多次重试仍然报错: {error_text})，将自动终止流程。"
+                f"[{self.RPA_NAME}] 页面加载持续失败 (多次重试仍然报错: {error_text})。\n"
+                f"警告：请确认您的网络状态。如果网络正常，极大可能是该链接已被企业微信风控限制，建议在 config.yaml 中更新最新的 form_url 后重试。"
             )
         return False

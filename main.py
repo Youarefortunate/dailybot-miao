@@ -1,3 +1,4 @@
+import json
 import asyncio
 import common.logger  # noqa: F401 (触发全局日志配置)
 from loguru import logger as log
@@ -10,6 +11,7 @@ from token_storage import load_all_tokens
 from oauth import oauth_platform_manager
 from crawlers import CrawlerFactory
 from workflows import WorkflowFactory
+from rpa.modules.rpa_factory import RPAFactory
 from exceptions import handle_logic_exception
 from request.core.http_request import HttpRequest
 
@@ -59,6 +61,41 @@ async def collect_all_reports():
     return report_text
 
 
+async def trigger_rpa(platform_name: str, summary_json: str):
+    """
+    根据配置动态触发 RPA 流程
+    """
+    try:
+        # 1. 检查配置是否启用
+        platform_config = config.get_platform(platform_name)
+        rpa_enabled = platform_config.get("rpa", {}).get("enabled", False)
+
+        if not rpa_enabled:
+            return
+
+        log.info(f"🚀 [RPA] 检测到 {platform_name} 已启用自动化填报，正在准备执行...")
+
+        # 2. 解析 AI 生成的结构化数据
+        try:
+            report_data = json.loads(summary_json)
+        except Exception as e:
+            log.error(f"❌ [RPA] AI 返回数据非合法 JSON，跳过 RPA 流程: {e}")
+            return
+
+        # 3. 获取 RPA 实例
+        rpa_instance = RPAFactory.get_rpa(platform_name, config._yaml_config)
+        if not rpa_instance:
+            log.warning(f"⚠️ [RPA] 未发现 {platform_name} 的 RPA 驱动实现，已跳过。")
+            return
+
+        # 4. 执行 RPA 逻辑 (异步执行，不阻塞主流程日志)
+        # 注意：此处直接 await，因为 process_summary 已经在 gather 中异步运行
+        await rpa_instance.run(report_data)
+
+    except Exception as e:
+        log.error(f"❌ [RPA] {platform_name} 自动化执行发生异常: {e}")
+
+
 async def run_reporting_logic():
     """全异步工作流：采集 -> AI 总结 -> 推送"""
     log.info("🎬 开始执行报告生成流程...")
@@ -102,8 +139,19 @@ async def run_reporting_logic():
     # 3. 并行 AI 总结与成功回调
     async def process_summary(wf, ctx):
         try:
+            platform_config = config.get_platform(wf.WORKFLOW_NAME)
+            rpa_enabled = platform_config.get("rpa", {}).get("enabled", False)
+            if rpa_enabled:
+                log.info(
+                    f"⚡ [RPA] {wf.WORKFLOW_NAME} RPA 已开启，待 AI 总结后即刻启动..."
+                )
+
             summary = await wf.summarize(raw_report)
             await wf.on_report_success(summary, ctx)
+
+            # 4. 尝试触发 RPA 自动化 (如果已启用)
+            await trigger_rpa(wf.WORKFLOW_NAME, summary)
+
         except Exception as e:
             log.error(f"工作流 {wf} 处理失败: {e}")
 
@@ -150,9 +198,14 @@ async def main():
     finally:
         # 清理资源
         log.info("🧹 程序运行结束，清理资源...")
-        await HttpRequest.close_all()
-        server.should_exit = True
-        await server_task
+        try:
+            await HttpRequest.close_all()
+            server.should_exit = True
+            # 给 ProactorEventLoop 留出一点缓冲时间来清理管道
+            await asyncio.sleep(0.5)
+            await server_task
+        except:
+            pass
 
 
 if __name__ == "__main__":

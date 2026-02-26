@@ -110,9 +110,18 @@ class BaseRPA(ABC):
             ],
             "ignore_default_args": ["--enable-automation"],  # 进一步隐藏
         }
-        if executable_path:
-            launch_params["executable_path"] = executable_path
-            logger.debug(f"[{self.RPA_NAME}] 使用指定的浏览器路径: {executable_path}")
+        # 获取浏览器执行路径
+        final_path = await self._get_executable_path(browser_type, executable_path)
+        if final_path:
+            launch_params["executable_path"] = final_path
+        else:
+            # 最终兜底：使用 channel 机制
+            launch_params["channel"] = (
+                "chrome" if browser_type == "chrome" else "msedge"
+            )
+            logger.debug(
+                f"[{self.RPA_NAME}] 未找到物理可执行文件，将使用 Playwright Channel: {launch_params['channel']}"
+            )
 
         # 启动持久化上下文
         self.browser_context = await self.playwright.chromium.launch_persistent_context(
@@ -122,6 +131,87 @@ class BaseRPA(ABC):
         # 注入 stealth 擦除 webdriver 等指纹特征
         await Stealth().apply_stealth_async(self.page)
         logger.debug(f"[{self.RPA_NAME}] 浏览器初始化完成")
+
+    async def _get_executable_path(
+        self, browser_type: str, user_specified_path: str = None
+    ) -> str:
+        """
+        健壮的浏览器路径寻找策略
+        :param browser_type: 浏览器类型 (chrome/msedge)
+        :param user_specified_path: 用户指定的路径
+        :return: 最终确定的物理路径，若未找到则返回 None
+        """
+        import os
+
+        final_executable_path = None
+        user_path_exists = False
+        user_path_mismatch = False
+
+        # 常见内置标准路径预定义 (Windows)
+        default_paths = {
+            "chrome": [
+                r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+                os.path.expandvars(
+                    r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"
+                ),
+            ],
+            "msedge": [
+                r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+                r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+                os.path.expandvars(
+                    r"%LOCALAPPDATA%\Microsoft\Edge\Application\msedge.exe"
+                ),
+            ],
+        }
+
+        # 1. 预校验用户指定的路径
+        if user_specified_path:
+            if os.path.exists(user_specified_path):
+                user_path_exists = True
+                path_lower = user_specified_path.lower()
+                # 检查类型是否匹配 (指鹿为马预防)
+                if (browser_type == "chrome" and "edge" in path_lower) or (
+                    browser_type == "msedge" and "chrome" in path_lower
+                ):
+                    user_path_mismatch = True
+                    logger.warning(
+                        f"[{self.RPA_NAME}] 警告：配置为 {browser_type} 但指定的路径指向了另一个浏览器: {user_specified_path}"
+                    )
+
+                # 如果既存在又匹配，直接采用
+                if not user_path_mismatch:
+                    final_executable_path = user_specified_path
+                    logger.debug(
+                        f"[{self.RPA_NAME}] 使用用户指定的匹配路径: {final_executable_path}"
+                    )
+            else:
+                logger.warning(
+                    f"[{self.RPA_NAME}] 指定的浏览器路径不存在: {user_specified_path}"
+                )
+
+        # 2. 如果没指定、指定的路径不存在、或者指定的路径类型不匹配，则尝试内置标准路径
+        if not final_executable_path:
+            logger.info(
+                f"[{self.RPA_NAME}] 正在尝试自动寻找内置标准路径 ({browser_type})..."
+            )
+            search_list = default_paths.get(browser_type, [])
+            for p in search_list:
+                if os.path.exists(p):
+                    final_executable_path = p
+                    logger.info(
+                        f"[{self.RPA_NAME}] 成功在标准位置找到 {browser_type}: {final_executable_path}"
+                    )
+                    break
+
+        # 3. 如果内置搜索仍然失败，但用户指定了一个虽然“看起来不对”但“确实存在”的路径，作为最后的物理路径尝试
+        if not final_executable_path and user_path_exists:
+            final_executable_path = user_specified_path
+            logger.warning(
+                f"[{self.RPA_NAME}] 未能找到标准路径，回退使用用户指定的物理路径（尽管可能类型不符）: {final_executable_path}"
+            )
+
+        return final_executable_path
 
     @abstractmethod
     async def _handle_login(self) -> bool:
@@ -158,6 +248,8 @@ class BaseRPA(ABC):
         except Exception as e:
             logger.error(f"[{self.RPA_NAME}] RPA 运行过程中发生异常: {e}")
             raise
+        finally:
+            await self.close()
 
         logger.info(f"[{self.RPA_NAME}] RPA 任务流程结束。")
 

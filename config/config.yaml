@@ -2,7 +2,7 @@
 platforms:
   # 飞书
   feishu:
-    ai_model: "deepseek"
+    ai_model: "doubao"
     app_id: ""
     app_secret: ""
     bot_token: ""
@@ -23,7 +23,8 @@ platforms:
       speed: 1 # 自动化填写速度倍率: 0.1 (最快) - 1 (最慢 - 模拟真人)。非法值将默认为 1
       max_retry: 1 # 页面加载错误时的最大刷新重试次数 (0-N)
       auto_submit: false # 是否自动提交
-      # 腾讯文档填报页面的 URL
+      browser_type: "chrome" # 浏览器类型: "chrome" 或 "msedge"
+      # 企业微信邀请填写日报的 URL
       form_url: "https://doc.weixin.qq.com/journal/create?docid=c2_AEoAdAfTAA8AZIAWgZUAEUCNuRb0l5JOj_fork"
       # 浏览器类型: "chrome" 或 "msedge"
       browser_user_data_dir: "" # 为空时默认保存到当前项目根目录下的 .browser_profiles/指定浏览器类型 文件夹；如果有需求也可以填写绝对路径, 例如 "C:\\Users\\Default\\AppData\\Local\\Google\\Chrome\\User Data"
