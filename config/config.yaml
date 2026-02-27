@@ -2,7 +2,7 @@
 platforms:
   # 飞书
   feishu:
-    ai_model: "deepseek"
+    ai_model: "doubao"
     app_id: ""
     app_secret: ""
     bot_token: ""

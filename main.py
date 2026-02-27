@@ -187,62 +187,49 @@ async def run_reporting_logic():
     for i, ctx in enumerate(contexts):
         wf_contexts.append((active_workflows[i], ctx))
 
-    # 3. 按模型进行 AI 总结 (去重：同模型只请求一次)
-    # 💡 [实时性优化] 在开始 AI 总结前探测并打印所有开启了 RPA 的平台状态
-    for wf in active_workflows:
-        platform_config = config.get_platform(wf.WORKFLOW_NAME)
-        if platform_config.get("rpa", {}).get("enabled", False):
-            log.info(f"⚡ [RPA] {wf.WORKFLOW_NAME} RPA 已开启，待 AI 总结后即刻启动...")
+    # 3. 准备模型请求任务 (去重：同模型只请求一次)
+    model_tasks = {}
 
-    model_to_summary = {}
+    async def get_model_summary(m_name: str):
+        """确保同模型只发起一次请求，并共享结果"""
+        if m_name in model_tasks:
+            return await model_tasks[m_name]
 
-    # 建立 工作流 -> 模型 的映射，并校验配置
-    wf_to_model = {}
-    for wf in active_workflows:
-        m_name = config.get_platform(wf.WORKFLOW_NAME).get("ai_model")
-        if not m_name:
-            log.error(
-                f"❌ [工作流: {wf.WORKFLOW_NAME}] 配置错误：未定义 ai_model，请检查 config.yaml"
+        async def _do_request():
+            log.info(f"🤖 [AI] 正在为模型供应商 {m_name} 生成统一总结内容...")
+            # 寻找第一个使用该模型的工作流来执行具体的 AI 业务逻辑
+            sample_wf = next(
+                wf
+                for wf in active_workflows
+                if config.get_platform(wf.WORKFLOW_NAME).get("ai_model") == m_name
             )
-            continue
-        wf_to_model[wf.WORKFLOW_NAME] = m_name
+            return await sample_wf.summarize(raw_report)
 
-    unique_models = list(set(wf_to_model.values()))
+        task = asyncio.create_task(_do_request())
+        model_tasks[m_name] = task
+        return await task
 
-    async def generate_summary_per_model(m_name):
-        log.info(f"🤖 [AI] 正在为模型供应商 {m_name} 生成统一总结内容...")
-        # 寻找第一个使用该模型的工作流来执行具体的 AI 业务逻辑
-        sample_wf = next(
-            wf for wf in active_workflows if wf_to_model.get(wf.WORKFLOW_NAME) == m_name
-        )
-        return await sample_wf.summarize(raw_report)
-
-    # 并发请求不同供应商的 AI 模型
-    if unique_models:
-        log.info(f"⏳ 正在并发请求 {len(unique_models)} 个 AI 模型供应商...")
-        summary_results = await asyncio.gather(
-            *(generate_summary_per_model(m) for m in unique_models)
-        )
-        for m, s in zip(unique_models, summary_results):
-            model_to_summary[m] = s
-    else:
-        log.warning("⚠️ 没有有效的 AI 模型配置，跳过总结流程。")
-
-    # 4. 并行派发结果并执行 RPA 自动化
-    async def finalize_workflow(wf, ctx):
+    # 4. 并行派发结果并执行 RPA 自动化 (非阻塞模式：谁先好谁先走)
+    async def finalize_workflow_async(wf, ctx):
         try:
-            m_name = wf_to_model.get(wf.WORKFLOW_NAME)
+            m_name = config.get_platform(wf.WORKFLOW_NAME).get("ai_model")
             if not m_name:
+                log.error(f"❌ [工作流: {wf.WORKFLOW_NAME}] 配置错误：未定义 ai_model")
                 return
 
-            summary = model_to_summary.get(m_name)
+            # 等待所属模型的总结结果 (如果其他工作流已经启动了该模型的请求，此处会共享等待)
+            summary = await get_model_summary(m_name)
             if not summary:
-                log.error(
-                    f"❌ 工作流 {wf.WORKFLOW_NAME} 未能在模型 {m_name} 中获取到总结结果"
-                )
+                log.error(f"❌ 工作流 {wf.WORKFLOW_NAME} 未能获取到总结结果")
                 return
+
+            # [非阻塞流转日志] 一旦某个模型好了，立即告知并触发后续
+            log.info(
+                f"✨ [AI总结完毕] 平台 {wf.WORKFLOW_NAME} 所需模型 {m_name} 已就绪，准备执行下一步动作..."
+            )
 
             # 成功回调 (如发送通知)
+            log.info(f"🚀 正在推送到平台: {wf.WORKFLOW_NAME}")
             await wf.on_report_success(summary, ctx)
 
             # 尝试触发 RPA 自动化
@@ -251,7 +238,16 @@ async def run_reporting_logic():
         except Exception as e:
             log.error(f"工作流 {wf.WORKFLOW_NAME} 最终处置失败: {e}")
 
-    await asyncio.gather(*(finalize_workflow(wf, ctx) for wf, ctx in wf_contexts))
+    # 💡 打印开启了 RPA 的平台状态提示
+    for wf in active_workflows:
+        platform_config = config.get_platform(wf.WORKFLOW_NAME)
+        if platform_config.get("rpa", {}).get("enabled", False):
+            log.info(
+                f"⚡ [RPA检测] {wf.WORKFLOW_NAME} 已开启自动化填报，响应后将即刻启动..."
+            )
+
+    # 启动所有工作流的终结任务 (并发运行，互不干扰)
+    await asyncio.gather(*(finalize_workflow_async(wf, ctx) for wf, ctx in wf_contexts))
 
 
 @handle_logic_exception
