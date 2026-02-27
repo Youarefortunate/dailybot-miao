@@ -112,19 +112,20 @@ repos:
         name: "农融易小程序"
         # 爬取日期配置（不传则默认爬取当天）
         # 支持单个日期或日期区间，每个元素以逗号分隔起止日期
-        crawl_dates:
-          - "2026-01-4"
+        # crawl_dates:
+        #   - "2026-2-4"
+          # - "2026-01-04, 2026-01-05"
       - path: "frontend_b2bwings/b2b-wings-easyloan-admin"
         branch: "test"
         name: "农融易后台管理系统"
 
 # 启用的工作流，名称要和 platforms 中的 key 对应
-enabled_workflows: ["feishu", "wecom"]
+enabled_workflows: ["feishu"]
 
 # 调度器配置 (Windows 本地定时触发配置)
 scheduler:
   enabled: true
-  auto_start: true # 开机自启
+  auto_start: false # 开机自启
   # 兜底执行时间 (如果今日不符合任何 tasks 规则，或配置全过期)
   default_time: "18:20"
   tasks: # 指定特定时间运行

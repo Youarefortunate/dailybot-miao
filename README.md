@@ -214,17 +214,17 @@ REDIS_PORT=6379
 
    ![image-20260227112551022](assest/preview/image-20260227112551022.png)
 
-2. **开通服务**：搜索并点击“豆包”系列模型（如 `doubao-pro-32k`），点击“立即开通”。
+2. **开通服务**：搜索并点击“豆包”系列模型（如 `doubao-seed-1-8-251228`），点击“开通服务”。
 
    ![image-20260227112738395](assest/preview/image-20260227112738395.png)
 
-3. **获取 API Key**：在左侧导航栏【API Key 管理】中点击“创建 API Key”，复制生成的密钥到`.env`里面的`DOUBAO_API_KEY`
+3. **获取 API Key**：在左侧导航栏【API Key 管理】中点击“创建 API Key”，复制生成的密钥到`.env`里面的`DOUBAO_API_KEY`等有关火山方舟大模型的ai都可以
 
    ![image-20260227112809695](assest/preview/image-20260227112809695.png)
 
 4. **获取base_url和模型名称**：
 
-   - 点击已经开通的模型名称进入【】页面，点击“创建”。
+   - 点击已经开通的模型名称进入对应ai的模型广场详情页面，在这里可以得到对应ai模型的名称（ID）和请求需要的基础url（base_url）
 
      ![image-20260227113800615](assest/preview/image-20260227113800615.png)
 
@@ -246,7 +246,7 @@ REDIS_PORT=6379
 
    - 创建一个新的 Token，名称随意
 
-   - **Scopes 建议全选** (至少包含 `read_api` 和 `read_repository`)。
+   - **Scopes 建议全选** 。
 
      ![image-20260227114309706](assest/preview/image-20260227114309706.png)
 
