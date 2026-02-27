@@ -45,7 +45,7 @@
 
 ---
 
-## 🏗️ 极致打包与分发 (EXE)
+## 🏗️ Fix(有bug): 极致打包与分发 (EXE)
 
 日报喵支持**单体 EXE 极致分发方案**：
 
@@ -70,40 +70,41 @@ pyinstaller scripts/DailyBot.spec --clean --noconfirm
 
 ```mermaid
 graph TD
-    subgraph "源头 - 智能采集 (Crawlers)"
-        GL["GitLab (Async Crawler)"]
-        GH["GitHub (Upcoming)"]
-        RD["Redmine (Upcoming)"]
+    subgraph "1. 环境自检 (System Checker)"
+        START[程序启动] --> ENV[Playwright 驱动检测]
+        ENV -->|未就绪| INSTALL[自动补全 Chromium]
+        ENV & INSTALL --> OAUTH_CHECK[OAuth 授权检测]
     end
 
-    subgraph "核心 - 逻辑枢纽 (Core Engine)"
-        M["main.py (Task Dispatcher)"]
-        REQ["HttpRequest (Shared Pool)"]
-        TOKEN["TokenStorage (Redis/File LRU)"]
-        OAUTH["OAuth Router (FastAPI)"]
+    subgraph "2. 智能采集 (Crawlers)"
+        OAUTH_CHECK -->|授权通过| C_FACTORY[Crawler Factory]
+        C_FACTORY -->|异步并行| GL["GitLab (Async)"]
+        C_FACTORY -->|Upcoming| GH["GitHub"]
+        GL & GH --> RAW_DATA[原始 Commits 汇总]
     end
 
-    subgraph "智脑 - AI 适配层 (Providers)"
-        AI["AI Factory"]
-        DS["DeepSeek V3"]
-        GM["Gemini 1.5 Flash"]
-        DB["豆包 Pro"]
+    subgraph "3. 智脑中心 (Providers)"
+        RAW_DATA -->|去重合并请求| AI_FACTORY[AI Factory]
+        AI_FACTORY -->|Doubao| DB[豆包 Pro]
+        AI_FACTORY -->|DeepSeek| DS[DeepSeek V3]
+        AI_FACTORY -->|Gemini| GM[Gemini 1.5]
+        DB & DS & GM --> SUMMARY[AI 生成总结内容]
     end
 
-    subgraph "终端 - 推送工作流 (Workflows)"
-        WF["Workflow Factory"]
-        FSC["Feishu (Card Update)"]
-        WWC["WeCom (Bot Push)"]
+    subgraph "4. 推送工作流 (Workflows)"
+        SUMMARY --> WF_FACTORY[Workflow Factory]
+        WF_FACTORY --> FS[飞书卡片推送]
+        WF_FACTORY --> WC[企业微信推送]
     end
 
-    GL & GH & RD --> M
-    M --> TOKEN
-    M --> REQ
-    REQ --> AI
-    AI --> DS & GM & DB
-    DS & GM & DB --> WF
-    WF --> FSC & WWC
-    FSC --> M
+    subgraph "5. 自动化填报 (RPA Executor)"
+        FS & WC --> RPA_FACTORY[RPA Factory]
+        RPA_FACTORY -->|驱动| PW[Playwright Engine]
+        PW --> SUBMIT[自动打开表单 & 模拟点击提交]
+    end
+
+    style START fill:#f9f,stroke:#333,stroke-width:2px
+    style SUBMIT fill:#00ff00,stroke:#333
 ```
 
 ---
@@ -129,103 +130,338 @@ DailyBot/
 
 ## 🚀 极简上手指南
 
-### 1. 环境准备
-```bash
+### 环境准备
+
+```powershell
 # 克隆项目并进入
 git clone https://github.com/your-repo/DailyBot.git
 cd DailyBot
 
 # 创建并激活虚拟环境 (Windows)
 python -m venv .venv
-.venv\Scripts\activate
+.\.venv\Scripts\activate
 
 # 安装全量依赖
 pip install -r requirements.txt
 ```
 
-### 2. 秘钥配置
-1. 复制 `.env.example` 为 `.env`。
-2. 根据注释填写您的 `GITLAB_TOKEN` 和 AI 模型密钥。
+---
 
-### 3. 开始执行
+## ⚙️ 配置指南
+
+### 1. 在项目根目录创建.env环境配置文件
+
+配置优先级：外部`.env`配置 > 外部`config.yaml` > 内部`.env`配置 > 内部`config.yaml`
+
+```properties
+# 飞书应用配置
+FEISHU_APP_ID=飞书appid
+FEISHU_APP_SECRET=飞书秘钥
+FEISHU_OAUTH_REDIRECT_URI=http://127.0.0.1:8001/feishu/callback # 授权配置回调地址
+FEISHU_BASE_URL=https://open.feishu.cn # 请求库配置
+# 机器人推送配置
+FEISHU_TARGET_CHAT_ID=推送机器人id
+FEISHU_STANDUP_TIME=09:00
+FEISHU_STANDUP_TIMEZONE=Asia/Shanghai
+
+# 豆包大模型配置
+DOUBAO_API_KEY=火山方舟API Key
+DOUBAO_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
+DOUBAO_MODEL=doubao-seed-1-8-251228
+
+# 智普GLM
+GLM_API_KEY=火山方舟API Key
+GLM_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
+GLM_MODEL=glm-4-7-251222
+
+# DeepSeek
+DEEPSEEK_API_KEY=火山方舟API Key
+DEEPSEEK_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
+DEEPSEEK_MODEL=deepseek-v3-2-251201
+
+# Kimi K2
+KIMI_API_KEY=火山方舟API Key
+KIMI_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
+KIMI_MODEL=kimi-k2-thinking-251104
+
+# Gemini
+GEMINI_API_KEY=Google AI Studio上面的API Key
+GEMINI_BASE_URL=https://generativelanguage.googleapis.com/v1beta
+GEMINI_MODEL=gemini-3-flash-preview
+
+LOG_LEVEL=INFO
+
+# GitLab 配置
+GITLAB_TOKEN=gitlab访问token
+GITLAB_TARGET_USER=你的gitlab仓库对应git的用户名
+
+# redis配置
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+```
+
+### 2. 火山方舟 (豆包 AI) 获取流程
+
+日报喵默认推荐使用豆包模型，其针对中文总结进行了深度优化，且新用户拥有丰厚的免费额度。
+
+1. **注册与登录**：访问 [火山方舟控制台](https://console.volcengine.com/ark/region:ark+cn-beijing/endpoint)。
+
+   ![image-20260227112429070](assest/preview/image-20260227112429070.png)
+
+   两处地方任意一处即可进入
+
+   ![image-20260227112506649](assest/preview/image-20260227112506649.png)
+
+   ![image-20260227112551022](assest/preview/image-20260227112551022.png)
+
+2. **开通服务**：搜索并点击“豆包”系列模型（如 `doubao-pro-32k`），点击“立即开通”。
+
+   ![image-20260227112738395](assest/preview/image-20260227112738395.png)
+
+3. **获取 API Key**：在左侧导航栏【API Key 管理】中点击“创建 API Key”，复制生成的密钥到`.env`里面的`DOUBAO_API_KEY`
+
+   ![image-20260227112809695](assest/preview/image-20260227112809695.png)
+
+4. **获取base_url和模型名称**：
+
+   - 点击已经开通的模型名称进入【】页面，点击“创建”。
+
+     ![image-20260227113800615](assest/preview/image-20260227113800615.png)
+
+     ![image-20260227113855539](assest/preview/image-20260227113855539.png)
+
+     将获取到的信息依次填写到对应的配置
+
+     ![image-20260227113955479](assest/preview/image-20260227113955479.png)
+
+   - > 新用户通常享有 **50 万免费 Token** 额度，建议优先开启“安心体验模式”以防意外扣费。
+
+### 2. GitLab 配置流程
+为了自动提取您的代码记录，需要配置 GitLab 访问凭据：
+
+1. **生成 Token**：
+   - 登录您的 GitLab，进入个人设置 -> **Access Tokens**。
+
+     ![image-20260227114125080](assest/preview/image-20260227114125080.png)
+
+   - 创建一个新的 Token，名称随意
+
+   - **Scopes 建议全选** (至少包含 `read_api` 和 `read_repository`)。
+
+     ![image-20260227114309706](assest/preview/image-20260227114309706.png)
+
+   - 复制生成的 `Personal Access Token`。
+
+     ![image-20260227114419766](assest/preview/image-20260227114419766.png)
+
+2. **确认用户名**：`GITLAB_TARGET_USER` 填入您的 GitLab 登录用户名（用于精准过滤您的提交）。查看当前仓库使用的：
+
+   ```bash
+   git config user.name
+   git config user.email
+   ```
+
+3. **启动项目**：
+
 ```bash
 # 手动单次运行
 python main.py
 
-# 生产环境常驻运行
+# 生产环境常驻运行 (基于 Cron 调度)
 python push_scheduler.py
 ```
 
 ---
 
-## ⚙️ 配置手册
+## 🛠️ 配置文件手册
 
-### 📁 `.env` (敏感信息)
-| 变量名 | 必填 | 说明 |
+日报喵支持高度灵活的配置，您可以根据需要通过外置的 `.env` 或 `config/config.yaml` 进行定义。
+
+### 1. 配置优先级
+**环境配置挂载 > 外部工作目录配置 > 打包目录内置配置**
+即：外部 `.env` > 外部 `config.yaml` > 内部 `.env` > 内部 `config.yaml`。
+
+### 2. 环境变量 (`.env`) 详解
+这些变量支持直接覆盖 YAML 中的对应点位，适合在本地部署或容器化环境中使用。
+| 变量名 | 类型 | 说明 |
 | :--- | :--- | :--- |
-| `GITLAB_TOKEN` | 是 | 用于采集代码记录的 Personal Access Token |
-| `DOUBAO_API_KEY` | 否 | 豆包 AI 的密钥 (模型使用必填) |
-| `REDIS_HOST` | 否 | Redis 地址 (若使用 redis 驱动) |
+| **全平台通用** | | |
+| `LOG_LEVEL` | String | 日志输出级别 (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
+| **GitLab 数据采集** | | |
+| `GITLAB_TOKEN` | String | GitLab 的 Personal Access Token (需 `read_api` 权限) |
+| `GITLAB_TARGET_USER` | String | 目标作者用户名，用于过滤 Commit 记录 |
+| `GITLAB_BASE_URL` | String | 自建 GitLab 的域名地址 |
+| `GITLAB_REPOS` | String | (可选) 动态仓库，格式：`repo_path:branch,repo_path:branch` |
+| **飞书推送平台** | | |
+| `FEISHU_APP_ID` | String | 飞书应用的 App ID |
+| `FEISHU_APP_SECRET` | String | 飞书应用的 App Secret |
+| `FEISHU_TARGET_CHAT_ID` | String | 接收卡片的飞书群聊 ID |
+| **企业微信推送平台** | | |
+| `WECOM_CORP_ID` | String | 企业微信 CorpID |
+| `WECOM_CORP_SECRET` | String | 企业微信应用 Secret |
+| `WECOM_RPA_FORM_URL` | String | 企业微信日报填写页面的 URL |
+| **AI 模型秘钥 (火山方舟等)** | | |
+| `DOUBAO_API_KEY` | String | 豆包 Pro API 密钥 |
+| `GLM_API_KEY` | String | 智谱 GLM-4 API 密钥 |
+| `DEEPSEEK_API_KEY` | String | DeepSeek API 密钥 |
+| `KIMI_API_KEY` | String | Kimi (Moonshot) API 密钥 |
+| `GEMINI_API_KEY` | String | Google Gemini API 密钥 |
+| **Redis 存储 (可选)** | | |
+| `REDIS_HOST` | String | Redis 地址 |
+| `REDIS_PORT` | Int | Redis 端口 (默认 6379) |
+| `REDIS_PASSWORD` | String | Redis 密码 |
 
-### 2. `config.yaml` 详尽配置手册
+### 3. YAML 配置 (`config.yaml`) 详解
+
+| 路径 | 类型 | 说明 | 默认/示例 |
+| :--- | :--- | :--- | :--- |
+| **全平台通用** | | | |
+| `enabled_workflows` | List | 数组，定义哪些平台将执行推送 (如 `["feishu", "wecom"]`) | `[]` |
+| **飞书 (feishu)** | | | |
+| `platforms.feishu.ai_model` | String | 该推送平台使用的 AI 模型参考 key | `doubao` |
+| `platforms.feishu.app_id` | String | 飞书应用的 App ID | `${FEISHU_APP_ID}` |
+| `platforms.feishu.app_secret` | String | 飞书应用的 App Secret | `${FEISHU_APP_SECRET}` |
+| `platforms.feishu.target_chat_id` | String | 接收日报卡片的群聊 ID | `oc_xxx` |
+| `platforms.feishu.standup_time` | String | 每日推送的标准时刻 | `09:00` |
+| `platforms.feishu.standup_timezone` | String | 时区设置 | `Asia/Shanghai` |
+| `platforms.feishu.base_url` | String | 飞书开放平台地址 | `https://open.feishu.cn` |
+| **企业微信 (wecom)** | | | |
+| `platforms.wecom.ai_model` | String | 绑定的 AI 模型 key | `doubao` |
+| `platforms.wecom.rpa.enabled` | Bool | 是否启用 Playwright 自动填报 | `true` |
+| `platforms.wecom.rpa.speed` | Float | 模拟真人操作速度 (0.1 最快, 1 最慢) | `1` |
+| `platforms.wecom.rpa.max_retry` | Int | 页面刷新重试次数 | `1` |
+| `platforms.wecom.rpa.auto_submit` | Bool | 是否直接点击“提交”按钮 | `false` |
+| `platforms.wecom.rpa.browser_type` | String | 内核选择: `chrome` 或 `msedge` | `chrome` |
+| `platforms.wecom.rpa.form_url` | String | 企业微信日报汇总表单的 URL | `https://doc.weixin.qq.com/...` |
+| `platforms.wecom.rpa.browser_executable_path` | String | 浏览器二进制文件的绝对路径 (留空则自动搜索) | `C:\Program Files\...` |
+| **AI 模型 (models)** | | | |
+| `models.xxx.name` | String | 模型的友好显示名称 | `豆包大模型` |
+| `models.xxx.base_url` | String | 模型 API 的基础 URL | `https://ark...` |
+| `models.xxx.model` | String | 模型名称或接入点 ID (Endpoint ID) | `ep-xxx` |
+| `models.xxx.params.temperature` | Float | 生成多样性控制参数 | `0.7` |
+| `models.xxx.params.timeout` | Int | 请求超时秒数 | `60` |
+| **仓库源 (repos)** | | | |
+| `repos.gitlab.base_url` | String | GitLab 服务器地址 | `http://git.xxx.com` |
+| `repos.gitlab.target_user` | String | 核心开发者用户名 (自动过滤记录) | `liangan` |
+| `repos.gitlab.repos[].path` | String | 仓库路径 (Group/Repo) | `frontend/admin` |
+| `repos.gitlab.repos[].branch` | String | 监听的分支 (支持逗号分隔多个) | `master, dev` |
+| `repos.gitlab.repos[].name` | String | 日报头部展示的项目名 | `管理后台` |
+| `repos.gitlab.repos[].crawl_dates` | List | (可选) 指定爬取的历史日期 | `["2024-01-01"]` |
+| **调度与日志 (scheduler/log)** | | | |
+| `scheduler.enabled` | Bool | 是否开启本地定时任务定时器 | `true` |
+| `scheduler.auto_start` | Bool | Windows 开机是否静默启动 | `true` |
+| `scheduler.default_time` | String | 兜底执行时刻 | `18:20` |
+| `scheduler.tasks` | List | 详细任务数组 (可定义 time, weekdays, dates) | `见示例` |
+| `log.level` | String | 控制台输出等级 (`DEBUG`/`INFO`/`ERROR`) | `INFO` |
+| `log.file_level` | String | 文件存储等级 (推荐 `DEBUG`) | `DEBUG` |
+| `log.rotation` | String | 日志切割逻辑 (如 `00:00` 表示每天) | `00:00` |
+| `log.retention` | String | 日志保留时长 | `7 days` |
+| `log.path` | String | 日志文件存放模板 | `logs/dailybot_{time}.log` |
+| **Redis (redis)** | | | |
+| `redis.host` | String | Redis 存储地址 | `127.0.0.1` |
+| `redis.port` | Int | 端口 | `6379` |
+| `redis.password` | String | 认证密码 | `""` |
+| `redis.database` | Int | 数据库 ID | `0` |
+
+---
+
+## 完整的 `config.yaml` 示例
+
+您可以参考以下模版在 `config/config.yaml` 中进行业务配置。**敏感信息建议通过 `.env` 注入，而不是直接写在这里。**
+
 ```yaml
 # ==========================================
-# 🐱 日报喵 (DailyBot) 核心配置文件
+# 🐱 日报喵 (DailyBot) 完整配置示例
 # ==========================================
 
-# --- 1. 业务平台配置 (推送目的地与 RPA 行为) ---
+# --- 1. 业务推送平台配置 ---
 platforms:
   feishu:
-    ai_model: "doubao"        # 绑定 AI 模型 (需在 models 中定义)
-    target_chat_id: "oc_xxx"  # 接收日报的群聊 ID
+    ai_model: "doubao"                 # 绑定的模型 key (对应 models 下的名称)
+    app_id: "${FEISHU_APP_ID}"        # 飞书应用 ID
+    app_secret: "${FEISHU_APP_SECRET}" # 飞书应用密钥
+    target_chat_id: "oc_xxx"          # 接收日报卡片的群聊 ID
     oauth_redirect_uri: "http://127.0.0.1:8001/feishu/callback"
-    base_url: "https://open.feishu.cn"
+    standup_time: "09:00"
 
   wecom:
     ai_model: "doubao"
-    rpa:
-      enabled: true           # 是否开启 RPA 自动化填报
-      speed: 1                # 模拟真人速度: 1 (慢) ~ 0.1 (快)
-      auto_submit: false      # 是否自动点击“提交”
-      browser_type: "chrome"  # 驱动: "chrome" 或 "msedge"
-      form_url: "https://doc.weixin.qq.com/journal/create?docid=xxx"
+    rpa:                               # 企业微信增强: 浏览器自动填报配置
+      enabled: true                   # 是否启动 RPA
+      speed: 1.0                      # 行为速度倍率 (0.1-1.0)
+      max_retry: 1                    # 加载失败重试次数
+      auto_submit: false              # 是否自动点击“提交提交”
+      browser_type: "chrome"          # "chrome" 或 "msedge"
+      form_url: "https://doc.weixin.qq.com/..." # 日报采集表单链接
+      browser_executable_path: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
 
-# --- 2. AI 模型供应商配置 (智脑负载) ---
+# --- 2. AI 模型供应商配置 ---
 models:
   doubao:
-    name: "豆包 Pro"
-    api_key: "${DOUBAO_API_KEY}" # 从 .env 动态注入
+    name: "豆包大模型"
+    api_key: "${DOUBAO_API_KEY}"
     base_url: "https://ark.cn-beijing.volces.com/api/v3"
-    model: "doubao-pro-xxxx"    # Endpoint ID
-    params:
-      temperature: 0.7
-      timeout: 60
+    model: "ep-xxx-xxx"               # 接入点 Endpoint ID
+    params: { timeout: 60 }
+
+  glm:
+    name: "智谱 GLM"
+    api_key: "${GLM_API_KEY}"
+    base_url: "https://ark.cn-beijing.volces.com/api/v3"
+    model: "glm-4-xxx"
+    params: { timeout: 60 }
 
   deepseek:
     name: "DeepSeek V3"
     api_key: "${DEEPSEEK_API_KEY}"
-    base_url: "https://api.deepseek.com/v1"
-    model: "deepseek-chat"
+    base_url: "https://ark.cn-beijing.volces.com/api/v3"
+    model: "deepseek-v3-xxx"
 
-# --- 3. 代码仓库配置 (数据源) ---
+  gemini:
+    name: "Gemini 1.5 Flash"
+    api_key: "${GEMINI_API_KEY}"
+    base_url: "https://generativelanguage.googleapis.com/v1beta"
+    model: "gemini-1.5-flash"
+
+# --- 3. 代码仓库数据源 ---
 repos:
   gitlab:
-    token: "${GITLAB_TOKEN}"
-    base_url: "http://git.xxx.com"
-    target_user: "liangan"     # 默认采集的开发者账号
-    repos:
-      - path: "dev/project-a"  # 仓库路径
-        branch: "master"       # 采集分支
-        name: "核心工程"        # 友好展示名称
+    token: "${GITLAB_TOKEN}"          # 你的 Personal Access Token
+    base_url: "http://git.xxx.com"    # 公司 GitLab 地址
+    target_user: "your_username"      # 用于过滤你的提交记录
+    repos:                            # 仓库扫描配置
+      - path: "dev/project-a"
+        branch: "master"
+        name: "后端核心"
+      - path: "dev/project-b"
+        branch: "test, develop"
+        name: "前端小程序"
 
-# --- 4. 全局开关与调度 ---
-enabled_workflows: ["feishu", "wecom"] # 启用的推送平台
+# --- 4. 全局开关与系统任务调度 ---
+enabled_workflows: ["feishu", "wecom"] # 启用哪些工作流
 
 scheduler:
-  enabled: true
-  auto_start: true           # 是否开机自启
-  default_time: "18:20"      # 默认运行时间
+  enabled: true                        # 启用 APScheduler 定时任务
+  auto_start: true                    # Windows 开机自启动 (静默 VBS 模式)
+  default_time: "18:20"                # 兜底执行时间
   tasks:
-    - time: "18:30"
-      weekdays: [1, 2, 3, 4, 5] # 每周一至周五运行
+    - time: "18:30"                   # 特定时间
+      weekdays: [1, 2, 3, 4, 5]        # 运行星期 (1-7)
+    - dates: ["2026-02-28"]             # 特定日期
+      time: "10:00"
+
+log:
+  level: "INFO"                        # 控制台输出级别
+  file_level: "DEBUG"                  # 写入文件级别 (详细)
+  rotation: "00:00"                    # 每天零点滚动日志
+  retention: "7 days"                  # 保留最近 7 天的日志
+
+redis:                                 # 可选：配置后用于存储 OAuth Token (避免频繁文件读写)
+  host: "127.0.0.1"
+  port: 6379
+  password: ""
+  database: 0
 ```
+
+
+
