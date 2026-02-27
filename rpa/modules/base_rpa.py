@@ -246,8 +246,18 @@ class BaseRPA(ABC):
             await self.fill_form(report_data)
 
         except Exception as e:
-            logger.error(f"[{self.RPA_NAME}] RPA 运行过程中发生异常: {e}")
-            raise
+            # 针对用户手动关闭浏览器的情况进行静默处理，并提供友好的日志提示
+            err_msg = str(e)
+            if (
+                "Target page, context or browser has been closed" in err_msg
+                or "Browser closed" in err_msg
+            ):
+                logger.warning(
+                    f"[{self.RPA_NAME}] 检测到浏览器窗口已被手动关闭，RPA 流程提前结束。"
+                )
+            else:
+                logger.error(f"[{self.RPA_NAME}] RPA 运行过程中发生异常: {e}")
+                raise
         finally:
             await self.close()
 
