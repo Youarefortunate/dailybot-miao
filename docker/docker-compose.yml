@@ -1,0 +1,31 @@
+version: '1.0'
+
+services:
+  dailybot:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: dailybot
+    restart: unless-stopped
+    volumes:
+      - ../config:/app/config
+      - ../logs:/app/logs
+      - ../token.json:/app/token.json
+      - ../token_storage:/app/token_storage 
+    env_file:
+      - ../.env
+    ports:
+      - "8001:8001"
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    container_name: dailybot-redis
+    restart: unless-stopped
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redis_data:/data
+
+volumes:
+  redis_data:

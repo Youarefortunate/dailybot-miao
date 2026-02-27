@@ -273,6 +273,31 @@ python push_scheduler.py
 
 ---
 
+## 🐳 TODO(待完善): Docker 快速部署
+
+如果您希望在 Linux 服务器上快速部署，或避免本地 Python 环境冲突，可以使用 Docker 方案。
+
+1. **环境准备**：确保已安装 Docker 和 Docker-compose。
+2. **配置环境变量**：参考上文配置好 `.env` 文件。
+3. **一键启动**：
+   ```bash
+   # 进入项目根目录执行
+   docker-compose -f docker/docker-compose.yml up -d
+   ```
+4. **管理指令**：
+   ```bash
+   # 查看实时日志
+   docker-compose -f docker/docker-compose.yml logs -f dailybot
+   
+   # 停止并移除容器
+   docker-compose -f docker/docker-compose.yml down
+   ```
+> Docker 镜像基于 Playwright 官方 Python 镜像构建，已内置所需的浏览器核心，无需额外安装驱动。
+
+---
+
+---
+
 ## 🛠️ 配置文件手册
 
 日报喵支持高度灵活的配置，您可以根据需要通过外置的 `.env` 或 `config/config.yaml` 进行定义。
