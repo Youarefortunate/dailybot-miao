@@ -4,6 +4,7 @@ import json
 from typing import Any
 from loguru import logger
 from dotenv import load_dotenv
+from utils.path_helper import get_resource_path
 
 
 class Config:
@@ -36,24 +37,36 @@ class Config:
         """
         加载 .env 文件中的环境变量。
         """
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        env_path = os.path.join(base_dir, ".env")
+
+        # 先尝试获取打包目录下的 .env (作为模板或默认)
+        env_path = get_resource_path(".env")
         if os.path.exists(env_path):
             load_dotenv(env_path, override=True)
+
+        # 再尝试加载当前运行目录下的 .env (用户自定义)
+        local_env = os.path.join(os.getcwd(), ".env")
+        if os.path.exists(local_env):
+            load_dotenv(local_env, override=True)
 
     @staticmethod
     def load_yaml_config():
         """
         从 config/config.yaml 读取配置。
         """
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        yaml_path = os.path.join(base_dir, "config", "config.yaml")
 
-        if not os.path.exists(yaml_path):
+        # 内部打包路径
+        yaml_path = get_resource_path(os.path.join("config", "config.yaml"))
+
+        # 外部工作目录路径 (允许用户外部覆盖)
+        local_yaml = os.path.join(os.getcwd(), "config", "config.yaml")
+
+        target_path = local_yaml if os.path.exists(local_yaml) else yaml_path
+
+        if not os.path.exists(target_path):
             return {}
 
         try:
-            with open(yaml_path, "r", encoding="utf-8") as f:
+            with open(target_path, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
                 return data if isinstance(data, dict) else {}
         except Exception as e:

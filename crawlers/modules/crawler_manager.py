@@ -9,9 +9,8 @@ class CrawlerManager(BaseDynamicManager):
     """
 
     def __init__(self):
-        # 确定 impl 目录的绝对路径
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        impl_dir = os.path.join(os.path.dirname(current_dir), "impl")
+        # 确定 impl 目录相对于项目根目录的路径
+        impl_dir = os.path.join("crawlers", "impl")
 
         # 初始化基类
         super().__init__(

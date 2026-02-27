@@ -2,7 +2,7 @@
 platforms:
   # 飞书
   feishu:
-    ai_model: "doubao"
+    ai_model: "deepseek"
     app_id: ""
     app_secret: ""
     bot_token: ""
@@ -119,7 +119,7 @@ repos:
         name: "农融易后台管理系统"
 
 # 启用的工作流，名称要和 platforms 中的 key 对应
-enabled_workflows: ["feishu"]
+enabled_workflows: ["feishu", "wecom"]
 
 # 调度器配置 (Windows 本地定时触发配置)
 scheduler:

@@ -1,5 +1,6 @@
 import os
 from request.core.dot_dict import DotDict
+from utils.path_helper import get_resource_path
 
 # 存储全局提示词定义
 prompts = DotDict()
@@ -9,7 +10,8 @@ def _load_prompts():
     """
     递归加载 prompts 目录下的所有 .md 文件并映射为点号访问结构
     """
-    current_dir = os.path.dirname(os.path.abspath(__file__))
+
+    current_dir = get_resource_path("prompts")
 
     def _walk_dir(path, current_dict):
         if not os.path.exists(path):

@@ -1,3 +1,4 @@
+import asyncio
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone, timedelta
 from loguru import logger
@@ -224,9 +225,6 @@ class BaseCrawler(ABC):
                         )
 
             return repo_path, repo.get("name"), repo_grouped
-
-        # 使用 asyncio.gather 实现多仓库并发爬取
-        import asyncio
 
         results = await asyncio.gather(*(crawl_repo(repo) for repo in repos_config))
 

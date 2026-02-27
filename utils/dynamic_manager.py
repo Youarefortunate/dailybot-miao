@@ -4,6 +4,7 @@ import os
 import pkgutil
 import threading
 from loguru import logger
+from utils.path_helper import get_resource_path
 
 
 class BaseDynamicManager:
@@ -21,7 +22,7 @@ class BaseDynamicManager:
         :param module_prefix: 导入时使用的模块前缀 (例如 "crawlers.impl")
         :param name_templates: 命名模板列表，例如 ["{key}_crawler", "{key}"]
         """
-        self._impl_dir_path = impl_dir_path
+        self._impl_dir_path = get_resource_path(impl_dir_path)
         self._module_prefix = module_prefix
         self._name_templates = name_templates or ["{key}"]
         self._registry = {}

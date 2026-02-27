@@ -8,3 +8,5 @@ token.json
 logs/
 js/
 .browser_profiles
+build/
+dist/

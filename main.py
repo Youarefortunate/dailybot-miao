@@ -1,5 +1,9 @@
 import json
 import asyncio
+import subprocess
+import sys
+import os
+import traceback
 import common.logger  # noqa: F401 (触发全局日志配置)
 from loguru import logger as log
 from datetime import datetime
@@ -14,6 +18,53 @@ from workflows import WorkflowFactory
 from rpa.modules.rpa_factory import RPAFactory
 from exceptions import handle_logic_exception
 from request.core.http_request import HttpRequest
+
+
+async def ensure_playwright_browsers():
+    """
+    检查并自动安装 Playwright 浏览器驱动 (Chromium)
+    实现傻瓜式运行：如果检测到 RPA 开启但环境不就绪，自动下载驱动。
+    """
+    # 1. 快速检查：是否有任一平台启用了 RPA
+    any_rpa_enabled = False
+    for p_name in config.get_repo_platforms():
+        if config.get_platform(p_name).get("rpa", {}).get("enabled", False):
+            any_rpa_enabled = True
+            break
+
+    if not any_rpa_enabled:
+        return
+
+    log.info("🧪 [系统] 正在准备自动化运行环境...")
+
+    # 2. 调用 playwright 内置驱动进行安装
+    # 在打包环境下，不能使用 sys.executable -m playwright
+    # 必须直接找到 playwright 的驱动二进制文件
+    try:
+        from playwright._impl._driver import compute_driver_executable
+
+        driver_exe = compute_driver_executable()
+        if not os.path.exists(driver_exe):
+            log.warning(f"⚠️ [系统] 未找到内置驱动路径: {driver_exe}")
+            return
+
+        cmd = [str(driver_exe), "install", "chromium"]
+        process = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        log.info("⏳ [系统] 正在进行环境自检与驱动补全，请稍候...")
+        stdout, stderr = await process.communicate()
+
+        if process.returncode == 0:
+            log.info("✅ [系统] 浏览器环境已就绪。")
+        else:
+            err_msg = stderr.decode()
+            log.warning(
+                f"⚠️ [系统] 环境初始化未完全成功 (Code: {process.returncode}): {err_msg}"
+            )
+
+    except Exception as e:
+        log.error(f"❌ [系统] 尝试自动辅助安装浏览器驱动时出错: {e}")
 
 
 async def collect_all_reports():
@@ -205,6 +256,9 @@ async def run_reporting_logic():
 
 @handle_logic_exception
 async def main():
+    # 0. 环境自检：如果启用了 RPA，确保浏览器驱动已安装 (傻瓜式运行)
+    await ensure_playwright_browsers()
+
     # 1. 启动 WebServer (OAuth 授权需要)
     config_server = uvicorn.Config(
         oauth_platform_manager.app, host="0.0.0.0", port=8001, log_level="error"
@@ -259,4 +313,12 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         pass
     except Exception as e:
-        log.exception(f"Fatal error: {e}")
+        print("\n" + "!" * 60)
+        print("【运行时错误】程序执行过程中发生崩溃：")
+        traceback.print_exc()
+        print("!" * 60)
+        try:
+            log.exception(f"Fatal error: {e}")
+        except:
+            pass
+        input("\n按 Enter 键退出程序...")

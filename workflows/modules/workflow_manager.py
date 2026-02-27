@@ -8,9 +8,8 @@ class WorkflowManager(BaseDynamicManager):
     """
 
     def __init__(self):
-        current_dir = os.path.dirname(os.path.abspath(__file__))
         # workflows/impl
-        impl_dir = os.path.join(os.path.dirname(current_dir), "impl")
+        impl_dir = os.path.join("workflows", "impl")
 
         super().__init__(
             impl_dir_path=impl_dir,
