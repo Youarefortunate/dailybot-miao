@@ -155,6 +155,9 @@ class BaseCrawler(ABC):
             logger.info(f"Ø 平台 {platform_name} 未配置任何仓库，跳过。")
             return all_commits
 
+        # 平台级别去重 (避免同一 Commit ID 出现在多个分支或配置项中)
+        seen_ids = set()
+
         # 构造并发任务列表
         async def crawl_repo(repo):
             repo_path = repo["path"]
@@ -164,7 +167,6 @@ class BaseCrawler(ABC):
             branches = [b.strip() for b in branch_raw.split(",") if b.strip()]
             date_ranges = self._parse_crawl_dates(repo.get("crawl_dates"))
 
-            seen_ids = set()
             repo_grouped = {}
 
             for branch in branches:
@@ -216,8 +218,10 @@ class BaseCrawler(ABC):
                                     pass
 
                             seen_ids.add(commit_id)
+                            # 在消息中注入分支名
+                            message = commit_data.get("message", "")
                             repo_grouped.setdefault(date_key, []).append(
-                                f"[{time_display}] {commit_data.get('message', '')}"
+                                f"[{time_display}]({branch}) {message}"
                             )
                     except Exception as e:
                         logger.opt(colors=True).error(
@@ -233,10 +237,17 @@ class BaseCrawler(ABC):
                 display_name = (
                     f"{repo_path} ({repo_alias})" if repo_alias else repo_path
                 )
-                all_commits[display_name] = grouped
+
+                # 合并同路径仓库的数据 (如果配置了多次同一仓库)
+                if display_name not in all_commits:
+                    all_commits[display_name] = {}
+
+                for date_key, msgs in grouped.items():
+                    all_commits[display_name].setdefault(date_key, []).extend(msgs)
+
                 count = sum(len(msgs) for msgs in grouped.values())
                 logger.opt(colors=True).info(
-                    f"仓库 <magenta>{repo_path}</magenta> 找到 <red>{count}</red> 条提交"
+                    f"仓库 <magenta>{repo_path}</magenta> 找到 <red>{count}</red> 条新提交"
                 )
 
         return all_commits

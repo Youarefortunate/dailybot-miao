@@ -34,7 +34,7 @@ class BaseWorkflow(ABC):
         return {}
 
     @abstractmethod
-    async def summarize(self, raw_report: str) -> str:
+    async def summarize(self, raw_report: str, extra_prompts: dict = None) -> str:
         """
         执行 AI 总结逻辑
         """

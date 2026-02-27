@@ -69,7 +69,7 @@ class AIFactory(BaseAIProvider):
             return obj.get(attr, default)
         return getattr(obj, attr, default)
 
-    async def summarize(self, text: str) -> str:
+    async def summarize(self, text: str, extra_prompts: dict = None) -> str:
         """
         AI 总结实现，支持动态负载模板和严格配置校验
         """
@@ -103,12 +103,25 @@ class AIFactory(BaseAIProvider):
                 global_prompts, "system", "你是一个日报总结助手。"
             )
 
+        extra_prompts = extra_prompts or {}
+        extra_system = extra_prompts.get("system")
+        extra_user = extra_prompts.get("user")
+
+        # 融合系统指令
+        if extra_system:
+            system_prompt = f"{system_prompt}\n\n{extra_system}"
+
         # 获取用户提示词模板：AI 专用 -> 全局 -> 默认
         user_template = self._get_prompt_attr(ai_prompts, "user", None)
         if user_template is None:
             user_template = self._get_prompt_attr(global_prompts, "user", "")
 
-        user_content = f"{user_template}\n{text}" if user_template else text
+        # 拼接用户提示词：模板 + 额外指令(如伪装) + 原始文本
+        user_content = user_template or ""
+        if extra_user:
+            user_content = f"{user_content}\n\n{extra_user}"
+
+        user_content = f"{user_content}\n\n{text}" if user_content else text
 
         # 优先从 cfg 取 model，这里不需要再手动拼接环境变量名，Config.get_model 已经处理了优先级
         model_id = cfg.get("model")

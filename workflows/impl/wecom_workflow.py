@@ -20,7 +20,7 @@ class WeComWorkflow(BaseWorkflow):
         # 企业微信通常使用 Webhook 直接推送，可能不需要占位符
         return {}
 
-    async def summarize(self, raw_report: str) -> str:
+    async def summarize(self, raw_report: str, extra_prompts: dict = None) -> str:
         """
         执行 AI 总结逻辑
         """
@@ -31,7 +31,7 @@ class WeComWorkflow(BaseWorkflow):
         if not ai_instance:
             return "总结失败"
 
-        return await ai_instance.summarize(raw_report)
+        return await ai_instance.summarize(raw_report, extra_prompts=extra_prompts)
 
     async def on_report_success(self, summary: str, context: dict):
         # TODO: 调用企微 API 推送最终内容
