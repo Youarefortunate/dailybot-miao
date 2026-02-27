@@ -268,11 +268,22 @@ async def main():
 
     log.info("⏳ 检查环境就绪状态...")
     enabled_workflow_names = getattr(config, "ENABLED_WORKFLOWS")
+    oath_required_platforms = oauth_platform_manager.get_registered_oath_platforms()
+
+    # 识别哪些已启用的平台需要通过授权中心进行 OAuth 授权
+    active_oath_platforms = [
+        p for p in enabled_workflow_names if p in oath_required_platforms
+    ]
 
     try:
         while True:
+            # 如果启用的平台中没有需要 OAuth 授权的，或者其中之一已经就绪，则不再等待
+            if not active_oath_platforms:
+                log.info("⚡ 无需 OAuth 授权，直接继续。")
+                break
+
             tokens_map = await load_all_tokens()
-            if any(v for v in tokens_map.values()):
+            if any(tokens_map.get(p) for p in active_oath_platforms):
                 log.info("✨ 授权检测通过。")
                 break
 
@@ -283,6 +294,7 @@ async def main():
             # 触发工作流准备
             for wf_name in enabled_workflow_names:
                 wf = WorkflowFactory.get_workflow(wf_name)
+                # 注意：此处 prepare 会负责发起 Nudge，通常内部会有“仅发送一次”的标记
                 if wf:
                     await wf.prepare()
 
