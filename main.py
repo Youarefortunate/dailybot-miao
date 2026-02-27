@@ -18,6 +18,7 @@ from workflows import WorkflowFactory
 from rpa.modules.rpa_factory import RPAFactory
 from exceptions import handle_logic_exception
 from request.core.http_request import HttpRequest
+from playwright._impl._driver import compute_driver_executable
 
 
 async def ensure_playwright_browsers():
@@ -41,8 +42,6 @@ async def ensure_playwright_browsers():
     # 在打包环境下，不能使用 sys.executable -m playwright
     # 必须直接找到 playwright 的驱动二进制文件
     try:
-        from playwright._impl._driver import compute_driver_executable
-
         driver_exe = compute_driver_executable()
         if not os.path.exists(driver_exe):
             log.warning(f"⚠️ [系统] 未找到内置驱动路径: {driver_exe}")
@@ -94,6 +93,7 @@ async def collect_all_reports():
     # 并发执行所有平台的采集
     results = await asyncio.gather(*crawl_tasks)
 
+    total_count = 0
     for i, commits_map in enumerate(results):
         if not commits_map:
             continue
@@ -106,10 +106,11 @@ async def collect_all_reports():
                 platform_report += f"      📅 日期: {date_str}\n"
                 for msg in date_groups[date_str]:
                     platform_report += f"        - {msg}\n"
+                    total_count += 1
 
         report_text += platform_report
 
-    return report_text
+    return report_text, total_count
 
 
 async def trigger_rpa(platform_name: str, summary_json: str):
@@ -165,7 +166,7 @@ async def run_reporting_logic():
         return
 
     # 1. 异步数据采集
-    raw_report = await collect_all_reports()
+    raw_report, total_count = await collect_all_reports()
     if not raw_report:
         log.warning("📭 今日没有任何可汇报的数据。")
         for wf in active_workflows:
@@ -175,10 +176,8 @@ async def run_reporting_logic():
                 log.error(f"发送暂无记录通知失败: {e}")
         return
 
-    log.info("🐠 采集到以下原始报文内容：")
-    print("-" * 50)
-    print(raw_report)
-    print("-" * 50)
+    log.info(f"🐠 采集到以下原始报文内容 (共 {total_count} 条)：")
+    log.info("\n" + "-" * 50 + "\n" + raw_report + "\n" + "-" * 50)
 
     # 2. 并行起始反馈
     wf_contexts = []
