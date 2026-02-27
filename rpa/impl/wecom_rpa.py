@@ -94,6 +94,13 @@ class WeComRPA(BaseRPA):
                     )
                     await asyncio.sleep(2)
                 else:
+                    err_msg = str(e)
+                    if (
+                        "Target page, context or browser has been closed" in err_msg
+                        or "Browser closed" in err_msg
+                    ):
+                        # 识别到浏览器手动关闭，直接向上抛出异常，让 BaseRPA 处理优雅退出
+                        raise e
                     logger.error(f"[{self.RPA_NAME}] 登录检测发生异常: {e}")
                     await asyncio.sleep(5)
 
@@ -387,6 +394,15 @@ class WeComRPA(BaseRPA):
             except Exception as e:
                 if "Execution context was destroyed" in str(e):
                     return True
+
+                err_msg = str(e)
+                if (
+                    "Target page, context or browser has been closed" in err_msg
+                    or "Browser closed" in err_msg
+                ):
+                    # 识别到浏览器手动关闭，抛出异常以跳出可能的重试循环
+                    raise e
+
                 raise
 
         if not silent:
