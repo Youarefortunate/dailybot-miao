@@ -78,13 +78,15 @@ class Config:
         基于 YAML 自动生成类实例的属性，支持环境覆盖。
         """
         for path, yaml_value in self.iter_yaml_paths("", self._yaml_config):
-            # 特殊处理 gitlab.repos
-            if path == "repos.gitlab.repos":
-                env_raw = os.getenv("GITLAB_REPOS")
+            # 特殊处理 crawler_sources.gitlab.repos
+            if path == "crawler_sources.gitlab.repos":
+                env_raw = os.getenv("GITLAB_CRAWLER_SOURCES")
                 if env_raw:
-                    self.GITLAB_REPOS = self.parse_gitlab_repos(env_raw)
+                    self.GITLAB_CRAWLER_SOURCES = self.parse_gitlab_crawler_sources(
+                        env_raw
+                    )
                 else:
-                    self.GITLAB_REPOS = yaml_value or []
+                    self.GITLAB_CRAWLER_SOURCES = yaml_value or []
                 continue
 
             attr_name = self.path_to_env_key(path)
@@ -109,16 +111,16 @@ class Config:
         """
         路径转环境变量名。
         """
-        _CATEGORY_KEYS = {"platforms", "models", "repos"}
+        _CATEGORY_KEYS = {"platforms", "models", "crawler_sources"}
         parts = path.split(".")
         if len(parts) > 1 and parts[0] in _CATEGORY_KEYS:
             parts = parts[1:]
         return "_".join(parts).upper()
 
     @staticmethod
-    def parse_gitlab_repos(repos_str: str):
+    def parse_gitlab_crawler_sources(repos_str: str):
         """
-        解析 GITLAB_REPOS 字符串。
+        解析 GITLAB_CRAWLER_SOURCES 字符串。
         """
         if not repos_str:
             return []
@@ -140,16 +142,16 @@ class Config:
         res = self.get(path, default={})
         return res if isinstance(res, dict) else {}
 
-    def get_repo_platforms(self) -> list:
+    def get_crawler_source_platforms(self) -> list:
         """
-        获取配置的所有仓库平台名称。
+        获取配置的所有采集源平台名称。
         """
-        repos_cfg = self._yaml_config.get("repos", {})
-        platforms = set(repos_cfg.keys()) if isinstance(repos_cfg, dict) else set()
+        sources_cfg = self._yaml_config.get("crawler_sources", {})
+        platforms = set(sources_cfg.keys()) if isinstance(sources_cfg, dict) else set()
 
         for env_key in os.environ.keys():
-            if env_key.endswith("_REPOS"):
-                platform_name = env_key.replace("_REPOS", "").lower()
+            if env_key.endswith("_CRAWLER_SOURCES"):
+                platform_name = env_key.replace("_CRAWLER_SOURCES", "").lower()
                 platforms.add(platform_name)
 
         return sorted(list(platforms))

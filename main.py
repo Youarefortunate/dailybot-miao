@@ -28,7 +28,7 @@ async def ensure_playwright_browsers():
     """
     # 1. 快速检查：是否有任一平台启用了 RPA
     any_rpa_enabled = False
-    for p_name in config.get_repo_platforms():
+    for p_name in config.get_crawler_source_platforms():
         if config.get_platform(p_name).get("rpa", {}).get("enabled", False):
             any_rpa_enabled = True
             break
@@ -67,48 +67,44 @@ async def ensure_playwright_browsers():
 
 
 async def collect_all_reports():
-    """采集所有支持平台的提交数据，并汇总文本 (异步并行化)"""
-    log.info("📋 正在采集所有平台的提交记录...")
+    """采集所有支持平台的活动数据，并汇总文本 (异步并行化)"""
+    log.info("📋 正在采集所有平台的活动记录...")
 
     report_text = ""
-    configured_platforms = config.get_repo_platforms()
+    configured_platforms = config.get_crawler_source_platforms()
     crawl_tasks = []
+    active_crawlers = []
 
     for platform in configured_platforms:
         crawler = CrawlerFactory.get_crawler(platform)
         if not crawler:
             log.warning(
-                f"⚠️ 仓库配置中定义了 {platform}，但系统中未找到对应的爬虫实现，已跳过。"
+                f"⚠️ 配置中定义了 {platform} 平台，但系统中未找到对应的爬虫实现，已跳过。"
             )
             continue
 
-        log.info(f"🔍 正在执行 {platform} 平台的采集任务...")
+        log.info(f"🔍 正在启动 {platform} 平台采集...")
         platform_upper = platform.upper()
         target_user = getattr(config, f"{platform_upper}_TARGET_USER", None)
         crawl_tasks.append(crawler.crawl(target_user=target_user))
+        active_crawlers.append(crawler)
 
     if not crawl_tasks:
-        return ""
+        return "", 0
 
     # 并发执行所有平台的采集
     results = await asyncio.gather(*crawl_tasks)
 
     total_count = 0
-    for i, commits_map in enumerate(results):
-        if not commits_map:
+    for crawler, activities_map in zip(active_crawlers, results):
+        if not activities_map:
             continue
 
-        platform = configured_platforms[i]
-        platform_report = f"\n  平台: {platform.upper()}\n"
-        for repo_name, date_groups in commits_map.items():
-            platform_report += f"    仓库: {repo_name}\n"
-            for date_str in sorted(date_groups.keys(), reverse=True):
-                platform_report += f"      📅 日期: {date_str}\n"
-                for msg in date_groups[date_str]:
-                    platform_report += f"        - {msg}\n"
-                    total_count += 1
-
-        report_text += platform_report
+        # 将展示处理逻辑完全下放给各自的平台爬虫
+        platform_report, count = crawler.generate_report(activities_map)
+        if count > 0:
+            report_text += platform_report
+            total_count += count
 
     return report_text, total_count
 

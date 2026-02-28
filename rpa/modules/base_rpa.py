@@ -1,5 +1,6 @@
 import os
 import asyncio
+import random
 from abc import ABC, abstractmethod
 from typing import Any, Dict
 from playwright.async_api import async_playwright, BrowserContext, Page
@@ -60,8 +61,6 @@ class BaseRPA(ABC):
         模拟真人随机延迟
         :param base_delay: 基础延迟时间(秒)
         """
-        import random
-
         # 使用数值倍率进行调整
         delay = base_delay * self.speed_val
         # 增加 20% - 70% 的随机扰动，使点击间隔不固定
@@ -141,7 +140,6 @@ class BaseRPA(ABC):
         :param user_specified_path: 用户指定的路径
         :return: 最终确定的物理路径，若未找到则返回 None
         """
-        import os
 
         final_executable_path = None
         user_path_exists = False
