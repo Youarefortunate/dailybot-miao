@@ -91,7 +91,19 @@ class Config:
 
             attr_name = self.path_to_env_key(path)
             env_val = os.getenv(attr_name)
-            final_value = env_val if env_val is not None else yaml_value
+            if env_val is not None:
+                # 识别并解析环境变量
+                final_value = env_val
+                if isinstance(env_val, str):
+                    env_val_strip = env_val.strip()
+                    # 仅支持 JSON 解析 (必须以 { 或 [ 开头)
+                    if env_val_strip.startswith(("{", "[")):
+                        try:
+                            final_value = json.loads(env_val_strip)
+                        except Exception:
+                            pass
+            else:
+                final_value = yaml_value
             setattr(self, attr_name, final_value)
 
     def iter_yaml_paths(self, prefix, data):
@@ -115,6 +127,7 @@ class Config:
         parts = path.split(".")
         if len(parts) > 1 and parts[0] in _CATEGORY_KEYS:
             parts = parts[1:]
+
         return "_".join(parts).upper()
 
     @staticmethod
@@ -175,8 +188,10 @@ class Config:
         """
         # 第一步：查看是否被单项环境变量/动态属性作为基础标量完全覆盖
         env_attr = self.path_to_env_key(path)
-        if hasattr(self, env_attr) and not isinstance(getattr(self, env_attr), dict):
-            return getattr(self, env_attr)
+        if hasattr(self, env_attr):
+            val = getattr(self, env_attr)
+            if not isinstance(val, dict):
+                return val
 
         # 第二步：在字典树中深层查询基础配置
         keys = path.split(".")
