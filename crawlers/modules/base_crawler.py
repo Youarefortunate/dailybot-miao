@@ -1,7 +1,12 @@
 import asyncio
+import random
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone, timedelta
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone
+from typing import Dict, List
 from loguru import logger
+from common.config import config
+from .camouflage_history import CamouflageItem, camouflage_history_manager
 from .crawler_manager import crawler_manager
 
 # 东八区时区
@@ -283,3 +288,153 @@ class BaseCrawler(ABC):
                     total_count += 1
 
         return platform_report, total_count
+
+    async def generate_camouflage_data(
+        self, needed_count: int, **kwargs
+    ) -> List[CamouflageItem]:
+        """
+        利用历史记录生成指定数量的伪装素材记录。
+        默认实现：向过去回溯若干天抓取数据，排除冷却期内的记录后，随机抽取。
+        各特定爬虫子类可以重写此方法（例如不走时间线逻辑的爬虫）。
+        """
+        lookback_days = kwargs.get(
+            "lookback_days", config.get("camouflage.lookback_days", 14)
+        )
+        cooldown_days = kwargs.get(
+            "cooldown_days", config.get("camouflage.cooldown_days", 10)
+        )
+        target_user = kwargs.get("target_user")
+
+        now = datetime.now(_TZ)
+        # 默认排除掉今天的数据，从昨天开始回溯
+        until_dt = now.replace(
+            hour=23, minute=59, second=59, microsecond=0
+        ) - timedelta(days=1)
+        since_dt = until_dt - timedelta(days=lookback_days)
+
+        since_str = since_dt.isoformat()
+        until_str = until_dt.isoformat()
+
+        sources_config = self.get_sources_config()
+        if not sources_config:
+            return []
+
+        all_candidates_by_source: Dict[str, List[CamouflageItem]] = defaultdict(list)
+        seen_ids = set()
+        platform_name = self.get_platform_name()
+
+        async def _internal_collect(curr_since: str, curr_until: str):
+            """内部采集逻辑存根"""
+
+            async def fetch_for_entity(entity: dict):
+                source_name = entity.get("name") or entity.get("path") or "Unknown"
+                try:
+                    raw_items = await self.fetch_activities(
+                        entity, curr_since, curr_until
+                    )
+                    if not raw_items:
+                        return
+
+                    for item in raw_items:
+                        activity_data = self.extract_activity_data(item)
+                        activity_id = activity_data.get("id")
+
+                        if not activity_id or activity_id in seen_ids:
+                            continue
+
+                        if self.should_skip_activity(activity_data):
+                            continue
+
+                        author_name = activity_data.get("author_name", "")
+                        author_email = activity_data.get("author_email", "")
+                        if target_user:
+                            u_f = target_user.lower()
+                            if (
+                                u_f not in author_name.lower()
+                                and u_f not in author_email.lower()
+                            ):
+                                continue
+
+                        if camouflage_history_manager.is_in_cooldown(
+                            activity_id, cooldown_days
+                        ):
+                            continue
+
+                        seen_ids.add(activity_id)
+                        formatted_content = self.format_activity(activity_data)
+                        repo_path = entity.get("path") or "Unknown"
+                        # 尝试从内容中提取日期 (如果有)
+                        item_date = (
+                            activity_data.get("original_date")
+                            or activity_data.get("created_at", "")[:10]
+                        )
+
+                        camou_item = (
+                            CamouflageItem.builder()
+                            .set_id(activity_id)
+                            .set_source(source_name)
+                            .set_repo_path(repo_path)
+                            .set_content(formatted_content)
+                            .set_platform(platform_name)
+                            .set_author(author_name)
+                            .set_date(item_date)
+                            .set_created_at(activity_data.get("created_at"))
+                            .build()
+                        )
+                        all_candidates_by_source[source_name].append(camou_item)
+                except Exception as e:
+                    logger.warning(
+                        f"[{platform_name}] 伪装素材历史采集失败 [{source_name}]: {e}"
+                    )
+
+            await asyncio.gather(*(fetch_for_entity(ent) for ent in sources_config))
+
+        # 执行第一轮采集
+        await _internal_collect(since_str, until_str)
+
+        # 弹性增强：如果素材严重不足且配置允许，尝试加倍回溯范围
+        current_total = sum(len(v) for v in all_candidates_by_source.values())
+        if current_total < needed_count:
+            extended_since_dt = since_dt - timedelta(days=lookback_days)
+            extended_since_str = extended_since_dt.isoformat()
+            logger.info(
+                f"✨ [{platform_name}] 初始回溯({lookback_days}天)素材不足({current_total}/{needed_count})，尝试深度回溯至 {extended_since_str}"
+            )
+            await _internal_collect(extended_since_str, since_str)
+
+        if not all_candidates_by_source:
+            return []
+
+        # 统计并打印各源的采集情况
+        source_stats = {k: len(v) for k, v in all_candidates_by_source.items()}
+        total_found = sum(source_stats.values())
+        logger.info(
+            f"📊 [{platform_name}] 素材采集审计: 共找到 {total_found} 条候选内容。分布详情: {dict(source_stats)}"
+        )
+
+        # 随机化源顺序与各源内部顺序 (公平采样预备)
+        source_keys = list(all_candidates_by_source.keys())
+        random.shuffle(source_keys)
+        for key in source_keys:
+            random.shuffle(all_candidates_by_source[key])
+
+        # 采用 Round-Robin (轮询) 策略提取，确保来源分散
+        final_selected: List[CamouflageItem] = []
+        while len(final_selected) < needed_count:
+            has_added_this_round = False
+            for key in source_keys:
+                if all_candidates_by_source[key]:
+                    final_selected.append(all_candidates_by_source[key].pop())
+                    has_added_this_round = True
+                    if len(final_selected) >= needed_count:
+                        break
+            if not has_added_this_round:
+                # 所有源都抽干了，提前退出
+                break
+
+        if len(final_selected) < needed_count:
+            logger.warning(
+                f"⚠️ [{platform_name}] 尽力了！即便深度回溯也仅能提供 {len(final_selected)} 条伪装素材 (目标: {needed_count})"
+            )
+
+        return final_selected

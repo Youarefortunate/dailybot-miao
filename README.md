@@ -43,6 +43,11 @@
 ### 4. 🤖 智脑请求共享机制
 - **模型去重**：若多个推送平台配置了相同的 AI 模型（如都用豆包），系统会自动合并请求。在单次运行中，相同模型的 AI 请求仅触发一次，极大节省 Token 消耗并保持总结的一致性。
 
+### 5. 🎭 智能日报伪装 (Camouflage)
+- **极速补全**：当当日工作量不足（Commit 较少）时，程序会自动从配置的历史仓库中抽取素材。
+- **大师级变脸**：内置“性质反转”润色算法。AI 会智能将历史上的“新增功能”重构为当前的“优化、重构或修复”，使日报产出在任务空窗期依然保持高专业度。
+- **冷启动与隐私保护**：利用 **LRU 冷却算法** 记录素材使用历史（`camouflage_history.json`），确保同一素材在指定冷却期内（如10天）绝不重复出现。
+
 ---
 
 ## 🏗️ Fix(有bug): 极致打包与分发 (EXE)
@@ -374,6 +379,12 @@ python push_scheduler.py
 | `repos.gitlab.repos[].branch` | String | 监听的分支 (支持逗号分隔多个) | `master, dev` |
 | `repos.gitlab.repos[].name` | String | 日报头部展示的项目名 | `管理后台` |
 | `repos.gitlab.repos[].crawl_dates` | List | (可选) 指定爬取的历史日期 | `["2024-01-01"]` |
+| **伪装补全 (camouflage)** | | | |
+| `repos.gitlab.camouflage.enabled` | Bool | 是否启用伪装补全功能 | `true` |
+| `repos.gitlab.camouflage.threshold` | Int | 触发阈值：当日提交数 <= 此值时补全 | `4` |
+| `repos.gitlab.camouflage.max_items` | Int | 目标总条数：触发后补齐至该数量 | `5` |
+| `repos.gitlab.camouflage.lookback_days` | Int | 素材回溯天数 (最大 28) | `14` |
+| `repos.gitlab.camouflage.cooldown_days` | Int | 素材使用后的 LRU 冷却天数 | `10` |
 | **调度与日志 (scheduler/log)** | | | |
 | `scheduler.enabled` | Bool | 是否开启本地定时任务定时器 | `true` |
 | `scheduler.auto_start` | Bool | Windows 开机是否静默启动 | `true` |
@@ -465,6 +476,14 @@ repos:
       - path: "dev/project-b"
         branch: "test, develop"
         name: "前端小程序"
+
+    # 伪装补全配置 (可选)
+    camouflage:
+      enabled: true       # 是否启用伪装
+      threshold: 4        # 触发阈值：当日提交数 <= 此值时触发补全
+      max_items: 5        # 目标总条数：触发后补齐至该数量
+      lookback_days: 14    # 素材回溯天数 (14-28天)
+      cooldown_days: 10    # 素材使用后的 LRU 冷却天数
 
 # --- 4. 全局开关与系统任务调度 ---
 enabled_workflows: ["feishu", "wecom"] # 启用哪些工作流

@@ -18,7 +18,7 @@ platforms:
       port: 8001
   # 企业微信
   wecom:
-    ai_model: "doubao"
+    ai_model: "deepseek"
     corp_id: ""
     corp_secret: ""
     # 自动化配置
@@ -117,16 +117,21 @@ crawler_sources:
         # 爬取日期配置（不传则默认爬取当天）
         # 支持单个日期或日期区间，每个元素以逗号分隔起止日期
         crawl_dates:
-          - "2025-12-31, 2026-1-2"
+          - "2025-12-31"
           # - "2026-01-04, 2026-01-05"
       - path: "frontend_b2bwings/b2b-wings-easyloan-admin"
         branch: "test"
         name: "农融易后台管理系统"
-        crawl_dates:
-          - "2026-1-28"
+    # 伪装配置
+    camouflage:
+      enabled: true       # 是否启用
+      threshold: 4        # 执行阈值：当日该平台总提交数少于此值时触发
+      max_items: 5        # 目标总条数：触发后，伪装记录数 = max_items - 真实采集数
+      lookback_days: 14    # 回溯天数：寻找素材的范围
+      cooldown_days: 10    # LRU 冷却天数：素材使用后的禁止期 (天)
 
 # 启用的工作流，名称要和 platforms 中的 key 对应
-enabled_workflows: ["wecom"]
+enabled_workflows: ["feishu"]
 
 # 调度器配置 (Windows 本地定时触发配置)
 scheduler:

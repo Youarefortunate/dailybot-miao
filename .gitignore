@@ -10,3 +10,4 @@ js/
 .browser_profiles
 build/
 dist/
+camouflage_history.json

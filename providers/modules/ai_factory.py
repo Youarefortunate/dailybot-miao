@@ -1,5 +1,6 @@
 import time
 import random
+import json
 from .ai_manager import ai_manager
 from loguru import logger
 from request.hooks.use_request import use_request
@@ -161,10 +162,27 @@ class AIFactory(BaseAIProvider):
                 process_params["timeout"] = process_params["timeout"] * 60
             payload.update(process_params)
 
-        # 5. 执行请求
+        # 5. 审计日志 (仅在存在额外增强提示词时触发，减少常规噪音)
+        if extra_prompts:
+            # 兼容不同 payload 结构
+            audit_path = (
+                payload.get("messages")
+                if "messages" in payload
+                else "Non-standard payload structure"
+            )
+            logger.debug(
+                f"[AIFactory] 请求负载: {json.dumps(audit_path, ensure_ascii=False, indent=2)}"
+            )
+
+        # 6. 执行请求
         try:
             res_data = await chat_req.fetch(payload)
-            return self._parse_response(res_data)
+            final_res = self._parse_response(res_data)
+            if extra_prompts:
+                logger.debug(
+                    f"✨ [AIFactory] 响应预览 (前200位): {final_res[:200]}..."
+                )
+            return final_res
         except Exception as e:
             logger.error(f"[{self.AI_PROVIDER_NAME}] 总结请求异常: {str(e)}")
             return f"错误: {str(e)}"

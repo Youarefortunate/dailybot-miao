@@ -1,24 +1,26 @@
-import json
 import asyncio
+import json
+import os
 import subprocess
 import sys
-import os
 import traceback
-import common.logger  # noqa: F401 (触发全局日志配置)
-from loguru import logger as log
 from datetime import datetime
 import uvicorn
+from loguru import logger as log
+from playwright._impl._driver import compute_driver_executable
+import common.logger  # noqa: F401 (触发全局日志配置)
 from api import apis
 from common import config
-from request.hooks import use_request
-from token_storage import load_all_tokens
-from oauth import oauth_platform_manager
-from crawlers import CrawlerFactory
-from workflows import WorkflowFactory
-from rpa.modules.rpa_factory import RPAFactory
+from crawlers.modules.camouflage_history import camouflage_history_manager
+from crawlers.modules.crawler_manager import crawler_manager
 from exceptions import handle_logic_exception
+from oauth import oauth_platform_manager
+from prompts import prompts
 from request.core.http_request import HttpRequest
-from playwright._impl._driver import compute_driver_executable
+from request.hooks import use_request
+from rpa.modules.rpa_factory import RPAFactory
+from token_storage import load_all_tokens
+from workflows import WorkflowFactory
 
 
 async def ensure_playwright_browsers():
@@ -64,49 +66,6 @@ async def ensure_playwright_browsers():
 
     except Exception as e:
         log.error(f"❌ [系统] 尝试自动辅助安装浏览器驱动时出错: {e}")
-
-
-async def collect_all_reports():
-    """采集所有支持平台的活动数据，并汇总文本 (异步并行化)"""
-    log.info("📋 正在采集所有平台的活动记录...")
-
-    report_text = ""
-    configured_platforms = config.get_crawler_source_platforms()
-    crawl_tasks = []
-    active_crawlers = []
-
-    for platform in configured_platforms:
-        crawler = CrawlerFactory.get_crawler(platform)
-        if not crawler:
-            log.warning(
-                f"⚠️ 配置中定义了 {platform} 平台，但系统中未找到对应的爬虫实现，已跳过。"
-            )
-            continue
-
-        log.info(f"🔍 正在启动 {platform} 平台采集...")
-        platform_upper = platform.upper()
-        target_user = getattr(config, f"{platform_upper}_TARGET_USER", None)
-        crawl_tasks.append(crawler.crawl(target_user=target_user))
-        active_crawlers.append(crawler)
-
-    if not crawl_tasks:
-        return "", 0
-
-    # 并发执行所有平台的采集
-    results = await asyncio.gather(*crawl_tasks)
-
-    total_count = 0
-    for crawler, activities_map in zip(active_crawlers, results):
-        if not activities_map:
-            continue
-
-        # 将展示处理逻辑完全下放给各自的平台爬虫
-        platform_report, count = crawler.generate_report(activities_map)
-        if count > 0:
-            report_text += platform_report
-            total_count += count
-
-    return report_text, total_count
 
 
 async def trigger_rpa(platform_name: str, summary_json: str):
@@ -161,8 +120,11 @@ async def run_reporting_logic():
         log.warning("⚠️ 没有可用的工作流，中止任务。")
         return
 
-    # 1. 异步数据采集
-    raw_report, total_count = await collect_all_reports()
+    # 1. 异步数据采集与可能触发的伪装补充
+    raw_report, total_count, extra_prompts, fake_items_used = (
+        await crawler_manager.collect_and_camouflage()
+    )
+
     if not raw_report:
         log.warning("📭 今日没有任何可汇报的数据。")
         for wf in active_workflows:
@@ -198,7 +160,7 @@ async def run_reporting_logic():
                 for wf in active_workflows
                 if config.get_platform(wf.WORKFLOW_NAME).get("ai_model") == m_name
             )
-            return await sample_wf.summarize(raw_report)
+            return await sample_wf.summarize(raw_report, extra_prompts=extra_prompts)
 
         task = asyncio.create_task(_do_request())
         model_tasks[m_name] = task
@@ -206,6 +168,7 @@ async def run_reporting_logic():
 
     # 4. 并行派发结果并执行 RPA 自动化 (非阻塞模式：谁先好谁先走)
     async def finalize_workflow_async(wf, ctx):
+        nonlocal fake_items_used
         try:
             m_name = config.get_platform(wf.WORKFLOW_NAME).get("ai_model")
             if not m_name:
@@ -217,6 +180,19 @@ async def run_reporting_logic():
             if not summary:
                 log.error(f"❌ 工作流 {wf.WORKFLOW_NAME} 未能获取到总结结果")
                 return
+
+            # 5. 总结成功后的后置动作
+            # 如果本次运行使用了伪装素材且 AI 总结成功，更新历史记录以防下次重复
+            if fake_items_used:
+                # 找到当前模型对应的生成内容（若有多个模型且同一平台，情况复杂，此处默认取第一个）
+                variant = summary
+                log.info(
+                    f"💾 [伪装] 总结成功，正在为 {len(fake_items_used)} 个素材更新记录..."
+                )
+                for item in fake_items_used:
+                    # 传入完整的 item 以记录更多元信息
+                    camouflage_history_manager.update_usage(item, variant)
+                fake_items_used = []  # 确保只有首个归队的模型任务更新它一次
 
             # [非阻塞流转日志] 一旦某个模型好了，立即告知并触发后续
             log.info(
