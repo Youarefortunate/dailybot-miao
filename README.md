@@ -350,6 +350,8 @@ python push_scheduler.py
 | `platforms.feishu.standup_time` | String | 每日推送的标准时刻 | `09:00` |
 | `platforms.feishu.standup_timezone` | String | 时区设置 | `Asia/Shanghai` |
 | `platforms.feishu.base_url` | String | 飞书开放平台地址 | `https://open.feishu.cn` |
+| `platforms.feishu.oauth.port` | Int | OAuth 回调服务器端口 | `8001` |
+| `platforms.feishu.oauth.host` | String | OAuth 回调服务器监听地址 | `0.0.0.0` |
 | **企业微信 (wecom)** | | | |
 | `platforms.wecom.ai_model` | String | 绑定的 AI 模型 key | `doubao` |
 | `platforms.wecom.rpa.enabled` | Bool | 是否启用 Playwright 自动填报 | `true` |
@@ -406,8 +408,10 @@ platforms:
     app_id: "${FEISHU_APP_ID}"        # 飞书应用 ID
     app_secret: "${FEISHU_APP_SECRET}" # 飞书应用密钥
     target_chat_id: "oc_xxx"          # 接收日报卡片的群聊 ID
-    oauth_redirect_uri: "http://127.0.0.1:8001/feishu/callback"
     standup_time: "09:00"
+    oauth:                             # OAuth 规整化配置
+      port: 8001
+      host: "0.0.0.0"
 
   wecom:
     ai_model: "doubao"

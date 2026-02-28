@@ -1,4 +1,5 @@
 import json
+from api import apis
 from loguru import logger
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
@@ -16,16 +17,14 @@ class FeishuOATHPlatform(BaseOATHPlatform):
 
     OATH_PLATFORM_NAME = "feishu"
 
-    def __init__(self, config=None):
-        super().__init__(config)
+    def __init__(self, config_dict=None):
+        super().__init__(config_dict=config_dict)
         self._req = None
         self.storage = get_platform_storage(self.OATH_PLATFORM_NAME)
 
     @property
     def req(self):
         if self._req is None:
-            from api import apis
-
             self._req = use_request(apis.feishu_app_im.send_message)
         return self._req
 
@@ -43,7 +42,6 @@ class FeishuOATHPlatform(BaseOATHPlatform):
         logger.info(
             f"[{self.OATH_PLATFORM_NAME}] 📡 接收到授权回调，Code: {code[:10]}..."
         )
-        from api import apis
 
         token_api = use_request(apis.feishu_user_auth.get_access_token)
 

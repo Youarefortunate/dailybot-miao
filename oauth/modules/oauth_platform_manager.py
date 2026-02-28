@@ -124,5 +124,22 @@ class OATHPlatformManager(BaseDynamicManager):
 
         return success, "; ".join(error_reasons) if error_reasons else None
 
+    def get_oath_server_config(self) -> dict:
+        """
+        获取当前活动（启用的且在 OATH 管理器中注册的）平台的 Web 服务器配置。
+        返回包含 host, port, log_level 等参数的字典
+        """
+        enabled_platforms = getattr(config, "ENABLED_WORKFLOWS", [])
+        oath_required = self.get_registered_oath_platforms()
+
+        for p_name in enabled_platforms:
+            if p_name in oath_required:
+                inst = self._get_instance(p_name)
+                if inst:
+                    return inst.oauth_config
+
+        # 降级默认值
+        return {"host": "0.0.0.0", "port": 8001, "log_level": "error"}
+
 
 oauth_platform_manager = OATHPlatformManager()

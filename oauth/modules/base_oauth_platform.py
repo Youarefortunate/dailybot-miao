@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 from loguru import logger
+from common.config import config
 from .oauth_platform_manager import oauth_platform_manager
 
 
@@ -17,10 +18,27 @@ class BaseOATHPlatform:
         if cls.OATH_PLATFORM_NAME != "unknown":
             oauth_platform_manager.register_oath_platform(cls.OATH_PLATFORM_NAME, cls)
 
-    def __init__(self, config=None):
-        self.config = config or {}
+    def __init__(self, config_dict=None):
+        self.config = config_dict or {}
         self.router = APIRouter()
         self.register_routes(self.router)
+
+    @property
+    def oauth_config(self) -> dict:
+        """
+        获取当前平台 OAuth 回调服务器的规整化配置
+        包含 host, port, log_level 等 uvicorn 配置参数
+        """
+        # 默认配置
+        default_cfg = {"host": "0.0.0.0", "port": 8001, "log_level": "error"}
+
+        # 从全局配置中获取该平台的私有配置
+        platform_cfg = config.get(f"platforms.{self.OATH_PLATFORM_NAME}.oauth", {})
+        if not isinstance(platform_cfg, dict):
+            platform_cfg = {}
+
+        # 合并配置，平台私有配置优先
+        return {**default_cfg, **platform_cfg}
 
     def register_routes(self, router: APIRouter):
         """

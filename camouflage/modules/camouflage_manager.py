@@ -18,7 +18,6 @@ class CamouflageManager(BaseDynamicManager):
     """
 
     def __init__(self):
-        # 初始化基类，扫描 impl 目录下的提供者
         impl_dir = os.path.join("camouflage", "impl")
         super().__init__(
             impl_dir_path=impl_dir,
@@ -69,7 +68,7 @@ class CamouflageManager(BaseDynamicManager):
         self, needed_count: int
     ) -> Dict[str, List[CamouflageItem]]:
         """
-        提供原始伪装素材列表，不再进行内部 AI 润色。
+        提供原始伪装素材列表
         """
         if not self.is_enabled or needed_count <= 0:
             return {}

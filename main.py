@@ -255,9 +255,12 @@ async def main():
     await ensure_playwright_browsers()
 
     # 1. 启动 WebServer (OAuth 授权需要)
-    config_server = uvicorn.Config(
-        oauth_platform_manager.app, host="0.0.0.0", port=8001, log_level="error"
+    srv_cfg = oauth_platform_manager.get_oath_server_config()
+    log.info(
+        f"🌐 [系统] 启动 OAuth 回调服务器于 {srv_cfg['host']}:{srv_cfg['port']}..."
     )
+
+    config_server = uvicorn.Config(oauth_platform_manager.app, **srv_cfg)
     server = uvicorn.Server(config_server)
     server_task = asyncio.create_task(server.serve())
 
