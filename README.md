@@ -143,18 +143,18 @@ graph TD
 
 ```text
 DailyBot/
-├── mcp_server/                     # 🔌 MCP 适配：支持全自动接入 Cursor / Antigravity / Claude Desktop
-├── main.py                     # 🚀 核心入口：控制全链路流转与浏览器自动环境初始化
-├── push_scheduler.py           # ⏰ 守护进程：基于 Cron 规则的定时推送服务
-├── config/                     # ⚙️ 配置中心：config.yaml 静态配置存放
-├── scripts/                    # 🛠️ 运维脚本：PyInstaller 打包配置 (.spec) 与启动脚本
-├── api/                        # 📡 接口定义：各平台声明式 API 映射
-├── crawlers/                   # 🔍 智能采集：各平台 Commits 爬虫实现
-├── rpa/                        # 🖱️ 自动化执行：Playwright 驱动的表单自动填报逻辑
-├── providers/                  # 🤖 模型适配：各 AI 大模型的 Payload 与解析器
-├── request/                    # 🌐 通讯方案：底层 httpx 异步封装与平台拦截器
-├── token_storage/              # 🗄️ 凭据存储：支持 Redis 或文件驱动
-└── utils/                      # 🔧 通用工具：动态模块发现器 (DynamicManager) 与路径助手
+├── mcp_server/          # 🔌 MCP 适配：支持全自动接入 Cursor / Antigravity / Claude Desktop
+├── main.py              # 🚀 核心入口：控制全链路流转与浏览器自动环境初始化
+├── push_scheduler.py    # ⏰ 守护进程：基于 Cron 规则的定时推送服务
+├── config/              # ⚙️ 配置中心：config.yaml 静态配置存放
+├── scripts/             # 🛠️ 运维脚本：PyInstaller 打包配置 (.spec) 与启动脚本
+├── api/                 # 📡 接口定义：各平台声明式 API 映射
+├── crawlers/            # 🔍 智能采集：各平台 Commits 爬虫实现
+├── rpa/                 # 🖱️ 自动化执行：Playwright 驱动的表单自动填报逻辑
+├── providers/           # 🤖 模型适配：各 AI 大模型的 Payload 与解析器
+├── request/             # 🌐 通讯方案：底层 httpx 异步封装与平台拦截器
+├── token_storage/       # 🗄️ 凭据存储：支持 Redis 或文件驱动
+└── utils/               # 🔧 通用工具：动态模块发现器 (DynamicManager) 与路径助手
 ```
 
 ---
