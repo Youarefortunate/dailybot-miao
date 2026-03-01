@@ -143,7 +143,7 @@ graph TD
 
 ```text
 DailyBot/
-├── mcp/                        # 🔌 MCP 适配：支持全自动接入 OpenClaw / Claude Desktop
+├── mcp_server/                     # 🔌 MCP 适配：支持全自动接入 Cursor / Antigravity / Claude Desktop
 ├── main.py                     # 🚀 核心入口：控制全链路流转与浏览器自动环境初始化
 ├── push_scheduler.py           # ⏰ 守护进程：基于 Cron 规则的定时推送服务
 ├── config/                     # ⚙️ 配置中心：config.yaml 静态配置存放
@@ -335,18 +335,27 @@ python main.py
 python push_scheduler.py
 ```
 
-### 3. MCP 接入说明 (可选)
+---
 
-日报喵原生支持 **Model Context Protocol (MCP)**。
+## 🔌 MCP 协议接入
 
-#### 接入配置 (以 Claude Desktop 为例)
-在您的 `claude_desktop_config.json` 中添加以下配置：
+日报喵原生支持 **Model Context Protocol (MCP)**，可作为 MCP Server 接入各类 AI 客户端。
+
+### 接入前提
+
+- 建议使用**虚拟环境的 Python 绝对路径**作为 `command`，确保依赖隔离
+- MCP Server 内置**启动自检机制**，首次启动时若检测到关键依赖（如 `fastmcp`）缺失，会自动执行 `pip install -r requirements.txt` 完成安装，无需手动操作
+
+### 配置示例
+
+<details>
+<summary><b>Antigravity</b>（~/.gemini/antigravity/mcp_config.json）</summary>
 
 ```json
 {
   "mcpServers": {
     "DailyBot": {
-      "command": "python",
+      "command": "D:\\backup\\DailyBot\\.venv\\Scripts\\python.exe",
       "args": ["-m", "mcp_server.server"],
       "cwd": "D:\\backup\\DailyBot",
       "env": {
@@ -357,11 +366,23 @@ python push_scheduler.py
 }
 ```
 
-#### 可用工具
-- `run_daily_report`: 触发完整的日报采集、总结与推送流程。
-- `get_enabled_workflows`: 查看当前启用的工作流列表。
-- `get_system_config`: 获取脱敏后的系统配置摘要。
+</details>
 
+
+> **📌 路径说明**：请将上述路径替换为你本地实际的项目路径和虚拟环境路径。
+
+### 可用工具
+
+| 工具名 | 说明 |
+|:---|:---|
+| `run_daily_report` | 触发完整的日报采集、AI 总结与推送流程 |
+| `get_enabled_workflows` | 查看当前启用的工作流列表 |
+| `get_system_config` | 获取脱敏后的系统配置摘要 |
+
+### 已知注意事项
+
+- **`cwd` 可能不生效**：部分 MCP 客户端（如 Cursor）设置的 `cwd` 参数不会实际改变进程的工作目录。为此，MCP Server 启动时会**自动通过 `__file__` 定位并切换到项目根目录**，确保 `config.yaml` 等配置文件始终能被正确加载，无需额外处理。
+- **`PYTHONPATH` 环境变量**：建议在配置中指定 `PYTHONPATH` 指向项目根目录，确保模块导入路径正确。
 
 ---
 

@@ -1,4 +1,5 @@
-from typing import Any, Dict, List
+import json
+from typing import Any, Dict
 from fastmcp import FastMCP
 from loguru import logger as log
 from main import main as dailybot_main
@@ -27,17 +28,17 @@ def register_tools(mcp: FastMCP):
             return f"执行失败: {str(e)}"
 
     @mcp.tool()
-    def get_enabled_workflows() -> List[str]:
+    def get_enabled_workflows() -> str:
         """
         获取当前已启用的工作流列表。
         """
         try:
-            enabled = getattr(config, "ENABLED_WORKFLOWS", [])
+            enabled = config.get("ENABLED_WORKFLOWS", [])
             log.info(f"🔍 [MCP] 获取已启用的工作流: {enabled}")
-            return list(enabled)
+            return json.dumps(list(enabled), ensure_ascii=False)
         except Exception as e:
             log.error(f"❌ [MCP] 工具执行异常: {e}")
-            return []
+            return json.dumps([], ensure_ascii=False)
 
     @mcp.tool()
     def get_system_config() -> Dict[str, Any]:
@@ -48,7 +49,7 @@ def register_tools(mcp: FastMCP):
             platforms = config.get_crawler_source_platforms()
             config_summary = {
                 "enabled_platforms": platforms,
-                "workflows": list(getattr(config, "ENABLED_WORKFLOWS", [])),
+                "workflows": list(config.get("ENABLED_WORKFLOWS", [])),
             }
             log.info("🔍 [MCP] 正在查询系统配置摘要")
             return config_summary
