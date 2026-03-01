@@ -43,10 +43,12 @@
 ### 4. 🤖 智脑请求共享机制
 - **模型去重**：若多个推送平台配置了相同的 AI 模型（如都用豆包），系统会自动合并请求。在单次运行中，相同模型的 AI 请求仅触发一次，极大节省 Token 消耗并保持总结的一致性。
 
-### 5. 🎭 智能日报伪装 (Camouflage)
-- **极速补全**：当当日工作量不足（Commit 较少）时，程序会自动从配置的历史仓库中抽取素材。
-- **大师级变脸**：内置“性质反转”润色算法。AI 会智能将历史上的“新增功能”重构为当前的“优化、重构或修复”，使日报产出在任务空窗期依然保持高专业度。
 - **冷启动与隐私保护**：利用 **LRU 冷却算法** 记录素材使用历史（`camouflage_history.json`），确保同一素材在指定冷却期内（如10天）绝不重复出现。
+- **大师级变脸**：内置“性质反转”润色算法。AI 会智能将历史上的“新增功能”重构为当前的“优化、重构或修复”，使日报产出在任务空窗期依然保持高专业度。
+
+### 6. 🔌 MCP 协议原生适配
+- **即插即用**：基于 `fastmcp` 实现，支持作为 MCP Server 接入 OpenClaw、Claude Desktop 等 AI 客户端。
+- **能力暴露**：直接在对话框中通过自然语言触发“运行日报”、“查询工作流”、“查看配置”等指令，实现真正的“对话式办公”。
 
 ---
 
@@ -75,6 +77,11 @@ pyinstaller scripts/DailyBot.spec --clean --noconfirm
 
 ```mermaid
 graph TD
+    subgraph "0. 外部接入 (Access Layer)"
+        CL[Claude Desktop / OpenClaw] -->|MCP Protocol| MCP_S[MCP Server]
+        MCP_S -->|Trigger| START
+    end
+
     subgraph "1. 环境自检 (System Checker)"
         START[程序启动] --> ENV[Playwright 驱动检测]
         ENV -->|未就绪| INSTALL[自动补全 Chromium]
@@ -110,26 +117,58 @@ graph TD
 
     style START fill:#f9f,stroke:#333,stroke-width:2px
     style SUBMIT fill:#00ff00,stroke:#333
+    style MCP_S fill:#3399ff,stroke:#fff,color:#fff
 ```
-
----
-
 ## 📂 项目结构解析
 
 ```text
 DailyBot/
-├── main.py              # 🚀 核心入口：控制全链路流转与浏览器自动环境初始化
-├── push_scheduler.py    # ⏰ 守护进程：基于 Cron 规则的定时推送服务
-├── config/              # ⚙️ 配置中心：config.yaml 静态配置存放
-├── scripts/             # 🛠️ 运维脚本：PyInstaller 打包配置 (.spec) 与启动脚本
-├── api/                 # 📡 接口定义：各平台声明式 API 映射
-├── crawlers/            # 🔍 智能采集：各平台 Commits 爬虫实现
-├── rpa/                 # 🖱️ 自动化执行：Playwright 驱动的表单自动填报逻辑
-├── providers/           # 🤖 模型适配：各 AI 大模型的 Payload 与解析器
-├── request/             # 🌐 通讯方案：底层 httpx 异步封装与平台拦截器
+├── mcp/                          # 🔌 MCP 适配：支持全自动接入 OpenClaw / Claude Desktop
+├── main.py                      # 🚀 核心入口：控制全链路流转与浏览器自动环境初始化
+├── push_scheduler.py   # ⏰ 守护进程：基于 Cron 规则的定时推送服务
+├── config/                      # ⚙️ 配置中心：config.yaml 静态配置存放
+├── scripts/                     # 🛠️ 运维脚本：PyInstaller 打包配置 (.spec) 与启动脚本
+├── api/                            # 📡 接口定义：各平台声明式 API 映射
+├── crawlers/                  # 🔍 智能采集：各平台 Commits 爬虫实现
+├── rpa/                 		    # 🖱️ 自动化执行：Playwright 驱动的表单自动填报逻辑
+├── providers/                # 🤖 模型适配：各 AI 大模型的 Payload 与解析器
+├── request/             		# 🌐 通讯方案：底层 httpx 异步封装与平台拦截器
 ├── token_storage/       # 🗄️ 凭据存储：支持 Redis 或文件驱动
-└── utils/               # 🔧 核心组件：动态模块发现器 (DynamicManager) 与路径助手
+└── utils/               			# 🔧 通用工具：动态模块发现器 (DynamicManager) 与路径助手
 ```
+
+---
+
+## ⏰ 自启动与后台运行 (Windows)
+
+日报喵针对 Windows 用户提供了**极致简化**的自启动与后台运行方案，确保你的日报任务在开机后自动、静和准时地执行。
+
+### 1. 核心入口：`scripts/DailyBot.bat`
+- **唯一操作点**：这是项目唯一的运行入口脚本。
+- **功能**：自动激活虚拟环境、启动调度服务，并根据 `config.yaml` 自动同步 Windows 自启动状态。
+
+### 2. 开启自启动
+1. 打开 `config/config.yaml`。
+2. 将 `scheduler.auto_start` 设置为 `true`。
+3. 双击运行 `scripts/DailyBot.bat`。
+
+**✨ 即时生效特性**：
+- 当你开启 `auto_start` 并运行脚本时，程序会立即为您在后台拉起一个**静默运行**的服务实例。
+
+### 3. 静默化原理
+- 系统利用 PowerShell 的 `-WindowStyle Hidden` 特性。
+- 开机自启动或通过脚本同步配置后，程序会静默转入后台。你可以在**任务管理器**中看到 `python.exe` 进程正在工作中。
+
+### 4. 关闭自启动
+1. 将 `config/config.yaml` 中的 `auto_start` 修改为 `false`。
+2. 再次双击运行 `scripts/DailyBot.bat`。
+3. 系统将自动移除 Windows 启动文件夹中的 `DailyBotScheduler` 快捷方式。
+- *提示：若需彻底结束当前正在后台运行的实例，请在任务管理器中手动结束 Python 进程。*
+
+### 5. 更改定时配置
+
+1. 当你手动修改`config.yaml`或者`.env`文件里面的配置时并且你想这个windows定时任务按照最新的配置执行，你需要重新双击运行`scripts/DailyBot.bat`脚本，这将会将之前的旧进程杀死，重新创建一个按照目前最新配置的新进程
+2. 每次创建一个进程就会在`logs/.scheduler.lock`里面显示创建的进程`PID`，此外还可以查看`logs/run_dailybot_error.log`查看每次命令启动的日志
 
 ---
 
@@ -275,6 +314,34 @@ python main.py
 # 生产环境常驻运行 (基于 Cron 调度)
 python push_scheduler.py
 ```
+
+### 3. MCP 接入说明 (可选)
+
+日报喵原生支持 **Model Context Protocol (MCP)**。
+
+#### 接入配置 (以 Claude Desktop 为例)
+在您的 `claude_desktop_config.json` 中添加以下配置：
+
+```json
+{
+  "mcpServers": {
+    "DailyBot": {
+      "command": "python",
+      "args": ["-m", "mcp_server.server"],
+      "cwd": "D:\\backup\\DailyBot",
+      "env": {
+        "PYTHONPATH": "D:\\backup\\DailyBot"
+      }
+    }
+  }
+}
+```
+
+#### 可用工具
+- `run_daily_report`: 触发完整的日报采集、总结与推送流程。
+- `get_enabled_workflows`: 查看当前启用的工作流列表。
+- `get_system_config`: 获取脱敏后的系统配置摘要。
+
 
 ---
 

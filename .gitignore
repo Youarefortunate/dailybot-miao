@@ -11,3 +11,4 @@ js/
 build/
 dist/
 camouflage_history.json
+.scheduler.lock

@@ -1,49 +1,26 @@
 import asyncio
+import atexit
 import os
+import subprocess
 import sys
 from datetime import datetime
-
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 from loguru import logger
+import psutil
 from win32com.client import Dispatch
 import winshell
+from utils.path_helper import get_root_path
 
 # 确保能导入项目根目录的模块
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
+sys.path.append(get_root_path())
 import main
 from common.config import config
-from token_storage import get_platform_storage, load_all_tokens
-
-
-def refresh_all_tokens():
-    """动态刷新配置启用的平台及所有用户的 access_token"""
-    logger.info("开始刷新所有平台 Token...")
-    try:
-        tokens = load_all_tokens()
-        # 这里的逻辑保持与原 push_scheduler.py 一致
-        # load_all_tokens 返回的是各个平台的 token map
-        for platform_key, platform_tokens in tokens.items():
-            storage = get_platform_storage(platform_key)
-            if not storage:
-                continue
-            for identifier in platform_tokens.keys():
-                try:
-                    storage.refresh_token(identifier)
-                    logger.info(f"刷新 {platform_key} ({identifier}) 成功")
-                except Exception as e:
-                    logger.error(f"刷新 {platform_key} ({identifier}) 失败: {e}")
-    except Exception as e:
-        logger.error(f"加载/刷新 Token 过程中发生错误: {e}")
 
 
 async def run_job():
     """执行推送日报/周报的完整流程"""
     logger.info("[定时任务] 触发自动推送流程...")
-    # 1. 刷新 Token
-    refresh_all_tokens()
-    # 2. 调用核心业务逻辑
     try:
         await main.main()
         logger.info("[定时任务] 流程执行完毕。")
@@ -109,38 +86,116 @@ def check_all_expired(tasks, target_date: datetime):
     return True
 
 
-def manage_windows_autostart(enabled: bool):
+def check_singleton(kill_existing: bool = False):
     """
-    管理 Windows 开机自启（通过 Startup 文件夹 + VBS 隐身启动）
+    检查是否已有实例在运行（单例模式）
+    """
+    lock_file = os.path.join(get_root_path(), "logs", ".scheduler.lock")
+    os.makedirs(os.path.dirname(lock_file), exist_ok=True)
+
+    try:
+        # 检测是否存在旧的锁文件并校验进程状态
+        if os.path.exists(lock_file):
+            try:
+                with open(lock_file, "r") as f:
+                    content = f.read().strip()
+                    old_pid = int(content) if content else None
+
+                if old_pid and psutil.pid_exists(old_pid):
+                    proc = psutil.Process(old_pid)
+                    if "python" in proc.name().lower():
+                        if kill_existing:
+                            logger.info(
+                                f"检测到正在运行的旧实例 (PID: {old_pid})，正在重启以应用新配置..."
+                            )
+                            proc.terminate()
+                            try:
+                                proc.wait(timeout=5)
+                            except psutil.TimeoutExpired:
+                                proc.kill()
+                            if os.path.exists(lock_file):
+                                try:
+                                    os.remove(lock_file)
+                                except:
+                                    pass
+                        else:
+                            return False, old_pid
+            except:
+                pass
+
+        # 写入当前 PID
+        with open(lock_file, "w") as f:
+            f.write(str(os.getpid()))
+
+        def remove_lock():
+            if os.path.exists(lock_file):
+                try:
+                    with open(lock_file, "r") as f:
+                        if int(f.read().strip()) == os.getpid():
+                            os.remove(lock_file)
+                except:
+                    pass
+
+        atexit.register(remove_lock)
+        return True, os.getpid()
+    except Exception as e:
+        logger.error(f"检查单例模式失败: {e}")
+        return True, os.getpid()
+
+
+def manage_windows_autostart(enabled: bool, is_service: bool = False):
+    """
+    管理 Windows 开机自启（通过 Startup 文件夹 + PowerShell 隐身启动）
     """
     startup_path = winshell.startup()
-    shortcut_path = os.path.join(startup_path, "DailyBotSilent.lnk")
+    shortcut_name = "DailyBotScheduler.lnk"
+    shortcut_path = os.path.join(startup_path, shortcut_name)
 
-    # 获取 run_silent.vbs 的绝对路径
-    vbs_path = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "scripts", "run_silent.vbs"
-    )
+    root_dir = os.path.dirname(os.path.abspath(__file__))
+    bat_path = os.path.join(root_dir, "scripts", "DailyBot.bat")
 
     if enabled:
-        if not os.path.exists(shortcut_path):
-            try:
-                w_dir = os.path.dirname(os.path.abspath(__file__))
+        try:
+            shell = Dispatch("WScript.Shell")
+            shortcut = shell.CreateShortCut(shortcut_path)
 
-                shell = Dispatch("WScript.Shell")
-                shortcut = shell.CreateShortCut(shortcut_path)
-                # 目标设为 wscript.exe，参数为 vbs 路径
-                shortcut.Targetpath = "wscript.exe"
-                shortcut.Arguments = f'"{vbs_path}"'
-                shortcut.WorkingDirectory = w_dir
-                shortcut.save()
-                logger.info(f"已创建静默启动快捷方式: {shortcut_path}")
-            except Exception as e:
-                logger.error(f"创建静默启动快捷方式失败: {e}")
+            # 使用 powershell 以隐藏窗口模式运行 DailyBot.bat，并携带 --service 参数
+            # --service 参数用于标识这是一个后台服务进程，防止无限递归拉起新进程
+            powershell_args = (
+                f"-WindowStyle Hidden -Command \"cmd /c '{bat_path}' --service\""
+            )
+
+            shortcut.Targetpath = "powershell.exe"
+            shortcut.Arguments = powershell_args
+            shortcut.WorkingDirectory = root_dir
+            shortcut.IconLocation = "powershell.exe,0"
+            shortcut.save()
+            logger.info(f"已更新静默启动快捷方式: {shortcut_path}")
+
+            # 如果当前不是以 service 模式运行，且开启了自启，则立即后台化并退出前台进程
+            if not is_service:
+                powershell_cmd = f"powershell.exe {powershell_args}"
+                # CREATE_NO_WINDOW = 0x08000000, DETACHED_PROCESS = 0x00000008
+                subprocess.Popen(
+                    powershell_cmd, shell=True, creationflags=0x08000000 | 0x00000008
+                )
+
+                logger.info("检测到开启自启配置，已立即在后台拉起静默实例。")
+                logger.info("本窗口即将自动关闭，调度服务将持续在后台运行。")
+                sys.exit(0)
+            else:
+                logger.info("当前已处于后台服务模式，调度正常运行中。")
+
+        except Exception as e:
+            logger.error(f"管理自启动过程发生错误: {e}")
     else:
         if os.path.exists(shortcut_path):
             try:
                 os.remove(shortcut_path)
                 logger.info(f"已移除静默启动快捷方式: {shortcut_path}")
+                logger.info(
+                    "提示：若需彻底停止后台运行的旧实例，请在任务管理器中结束 Python 进程。"
+                )
             except Exception as e:
                 logger.error(f"移除静默启动快捷方式失败: {e}")
 
@@ -151,9 +206,19 @@ def setup_scheduler():
         logger.warning("调度器未启用 (config.yaml: scheduler.enabled 为 false)")
         return
 
-    # 管理自启动
+    # 1. 检测运行模式
+    is_service = "--service" in sys.argv
+
+    # 2. 单例检测与热重载逻辑
+    # 如果是手动双击运行 (not is_service)，则允许杀掉旧的后台进程以更新配置
+    is_running, pid = check_singleton(kill_existing=not is_service)
+    if not is_running:
+        logger.warning(f"检测到已有调度实例正在后台运行 (PID: {pid})，请勿重复启动。")
+        sys.exit(0)
+
+    # 3. 管理自启动
     auto_start = scheduler_cfg.get("auto_start", False)
-    manage_windows_autostart(auto_start)
+    manage_windows_autostart(auto_start, is_service)
 
     scheduler = BlockingScheduler()
     tasks = scheduler_cfg.get("tasks", [])
