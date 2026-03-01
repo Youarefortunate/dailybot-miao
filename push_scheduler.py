@@ -8,18 +8,14 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 from loguru import logger
 import psutil
-from win32com.client import Dispatch
-import winshell
-from utils.path_helper import get_root_path
-
-# 确保能导入项目根目录的模块
-sys.path.append(get_root_path())
-import main
 from common.config import config
 
 
 async def run_job():
     """执行推送日报/周报的完整流程"""
+    # 延迟导入 main 以显著提升启动速度
+    import main
+
     logger.info("[定时任务] 触发自动推送流程...")
     try:
         await main.main()
@@ -86,72 +82,104 @@ def check_all_expired(tasks, target_date: datetime):
     return True
 
 
-def check_singleton(kill_existing: bool = False):
+def check_singleton(is_service: bool = False):
     """
-    检查是否已有实例在运行（单例模式）
+    检查并管理单例模式，解决启动器与服务进程的竞态条件。
+    :param is_service: 是否为后台服务模式
+    :return: (bool, int) -> (是否通过检测, 冲突的 PID)
     """
+    from utils.path_helper import get_root_path
+
     lock_file = os.path.join(get_root_path(), "logs", ".scheduler.lock")
     os.makedirs(os.path.dirname(lock_file), exist_ok=True)
 
-    try:
-        # 检测是否存在旧的锁文件并校验进程状态
-        if os.path.exists(lock_file):
-            try:
-                with open(lock_file, "r") as f:
-                    content = f.read().strip()
-                    old_pid = int(content) if content else None
+    # 1. 检测旧实例并尝试清理
+    if os.path.exists(lock_file):
+        try:
+            with open(lock_file, "r") as f:
+                content = f.read().strip()
+                old_pid = int(content) if content else None
 
-                if old_pid and psutil.pid_exists(old_pid):
-                    proc = psutil.Process(old_pid)
-                    if "python" in proc.name().lower():
-                        if kill_existing:
-                            logger.info(
-                                f"检测到正在运行的旧实例 (PID: {old_pid})，正在重启以应用新配置..."
+            if old_pid and psutil.pid_exists(old_pid):
+                proc = psutil.Process(old_pid)
+                # 校验是否为 Python 进程（避免误杀）
+                if "python" in proc.name().lower():
+                    if not is_service:
+                        logger.info(
+                            f"检测到正在运行的旧实例 (PID: {old_pid})，正在终止..."
+                        )
+                        proc.terminate()
+                        try:
+                            # 给 5 秒优雅退出的时间
+                            proc.wait(timeout=5)
+                        except psutil.TimeoutExpired:
+                            logger.warning(
+                                f"旧实例 (PID: {old_pid}) 未能及时退出，强制杀死..."
                             )
-                            proc.terminate()
+                            proc.kill()
+
+                        # 【关键】启动器必须确保物理删除锁文件，否则新服务进程会读到旧 PID
+                        if os.path.exists(lock_file):
                             try:
-                                proc.wait(timeout=5)
-                            except psutil.TimeoutExpired:
-                                proc.kill()
-                            if os.path.exists(lock_file):
-                                try:
-                                    os.remove(lock_file)
-                                except:
-                                    pass
-                        else:
+                                os.remove(lock_file)
+                                logger.debug("已物理删除旧锁文件。")
+                            except Exception as e:
+                                logger.error(f"无法删除旧锁文件: {e}")
+                    else:
+                        # 服务进程模式：如果发现锁文件中的 PID 不是自己，则冲突
+                        if old_pid != os.getpid():
                             return False, old_pid
-            except:
-                pass
+            else:
+                # 如果 PID 已不存在，启动器直接删掉僵尸锁文件
+                if not is_service:
+                    try:
+                        os.remove(lock_file)
+                        logger.debug("已清理残留的僵尸锁文件。")
+                    except:
+                        pass
+        except Exception as e:
+            logger.debug(f"校验旧锁文件时发生异常: {e}")
 
-        # 写入当前 PID
-        with open(lock_file, "w") as f:
-            f.write(str(os.getpid()))
+    # 2. 只有服务进程 (Service) 有权正式写入进程锁
+    if is_service:
+        try:
+            with open(lock_file, "w") as f:
+                f.write(str(os.getpid()))
 
-        def remove_lock():
-            if os.path.exists(lock_file):
-                try:
-                    with open(lock_file, "r") as f:
-                        if int(f.read().strip()) == os.getpid():
-                            os.remove(lock_file)
-                except:
-                    pass
+            def remove_lock():
+                if os.path.exists(lock_file):
+                    try:
+                        with open(lock_file, "r") as f:
+                            content = f.read().strip()
+                            if content and int(content) == os.getpid():
+                                os.remove(lock_file)
+                                logger.debug(
+                                    f"服务正常退出，已清理锁文件 (PID: {os.getpid()})"
+                                )
+                    except:
+                        pass
 
-        atexit.register(remove_lock)
-        return True, os.getpid()
-    except Exception as e:
-        logger.error(f"检查单例模式失败: {e}")
-        return True, os.getpid()
+            atexit.register(remove_lock)
+            logger.info(f"服务运行中，已锁定进程 (PID: {os.getpid()})")
+        except Exception as e:
+            logger.error(f"服务进程写入锁文件失败: {e}")
+
+    return True, os.getpid()
 
 
 def manage_windows_autostart(enabled: bool, is_service: bool = False):
     """
     管理 Windows 开机自启（通过 Startup 文件夹 + PowerShell 隐身启动）
     """
+    import winshell
+    from win32com.client import Dispatch
+    from utils.path_helper import get_root_path
+
     startup_path = winshell.startup()
     shortcut_name = "DailyBotScheduler.lnk"
     shortcut_path = os.path.join(startup_path, shortcut_name)
 
-    root_dir = os.path.dirname(os.path.abspath(__file__))
+    root_dir = get_root_path()
     bat_path = os.path.join(root_dir, "scripts", "DailyBot.bat")
 
     if enabled:
@@ -210,8 +238,9 @@ def setup_scheduler():
     is_service = "--service" in sys.argv
 
     # 2. 单例检测与热重载逻辑
-    # 如果是手动双击运行 (not is_service)，则允许杀掉旧的后台进程以更新配置
-    is_running, pid = check_singleton(kill_existing=not is_service)
+    # 如果是手动双击运行 (not is_service)，则由 check_singleton 负责清理旧进程
+    # 只有 is_service 为 True 时，才会执行正式的锁文件写入
+    is_running, pid = check_singleton(is_service=is_service)
     if not is_running:
         logger.warning(f"检测到已有调度实例正在后台运行 (PID: {pid})，请勿重复启动。")
         sys.exit(0)
