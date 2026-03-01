@@ -78,18 +78,37 @@ pyinstaller scripts/DailyBot.spec --clean --noconfirm
 ```mermaid
 graph TD
     subgraph "0. 外部接入 (Access Layer)"
-        CL[Claude Desktop / OpenClaw] -->|MCP Protocol| MCP_S[MCP Server]
+        CL[Antigravity / OpenClaw接入MCP后] -->|MCP Protocol| MCP_S[MCP Server]
+        USER[用户双击 DailyBot.bat] -->|手动运行| SCHEDULER
+        WIN_STARTUP[Windows 开机自启] -->|自动运行| SCHEDULER
         MCP_S -->|Trigger| START
+    end
+
+    subgraph "6. 守护进程 (Scheduler & Autostart)"
+        SCHEDULER[push_scheduler.py] --> LOCK[单例检测 & 进程锁]
+        LOCK -->|检测到旧进程| KILL[自动终止旧实例]
+        KILL --> SERVICE[启动调度服务]
+        LOCK -->|无运行实例| SERVICE
+        SERVICE -->|Cron 触发| START
     end
 
     subgraph "1. 环境自检 (System Checker)"
         START[程序启动] --> ENV[Playwright 驱动检测]
         ENV -->|未就绪| INSTALL[自动补全 Chromium]
-        ENV & INSTALL --> OAUTH_CHECK[OAuth 授权检测]
+        ENV & INSTALL --> OAUTH_CHECK{各平台 OAuth 授权检测}
+    end
+
+    %% 横向布局：OAuth 流程放在右侧以节省垂直空间
+    subgraph "7. OAuth 流程 (以飞书为例)"
+        OAUTH_CHECK -->|检出过期| FS_CHECK[飞书 Token 有效性校验]
+        FS_CHECK -->|过期且可刷新| FS_REFRESH[飞书 无感刷新 Refresh Token]
+        FS_REFRESH -->|刷新失败 / 无凭据| FS_CARD[发送飞书单聊授权卡片]
+        FS_CARD -->|用户点击卡片授权| FS_SUCCESS[更新凭据 & 自动重试工作流]
     end
 
     subgraph "2. 智能采集 (Crawlers)"
         OAUTH_CHECK -->|授权通过| C_FACTORY[Crawler Factory]
+        FS_CHECK & FS_REFRESH & FS_SUCCESS -->|授权通过| C_FACTORY
         C_FACTORY -->|异步并行| GL["GitLab (Async)"]
         C_FACTORY -->|Upcoming| GH["GitHub"]
         GL & GH --> RAW_DATA[原始 Commits 汇总]
@@ -118,23 +137,24 @@ graph TD
     style START fill:#f9f,stroke:#333,stroke-width:2px
     style SUBMIT fill:#00ff00,stroke:#333
     style MCP_S fill:#3399ff,stroke:#fff,color:#fff
+    style SCHEDULER fill:#ffcc00,stroke:#333
 ```
 ## 📂 项目结构解析
 
 ```text
 DailyBot/
-├── mcp/                          # 🔌 MCP 适配：支持全自动接入 OpenClaw / Claude Desktop
-├── main.py                      # 🚀 核心入口：控制全链路流转与浏览器自动环境初始化
-├── push_scheduler.py   # ⏰ 守护进程：基于 Cron 规则的定时推送服务
-├── config/                      # ⚙️ 配置中心：config.yaml 静态配置存放
-├── scripts/                     # 🛠️ 运维脚本：PyInstaller 打包配置 (.spec) 与启动脚本
-├── api/                            # 📡 接口定义：各平台声明式 API 映射
-├── crawlers/                  # 🔍 智能采集：各平台 Commits 爬虫实现
-├── rpa/                 		    # 🖱️ 自动化执行：Playwright 驱动的表单自动填报逻辑
-├── providers/                # 🤖 模型适配：各 AI 大模型的 Payload 与解析器
-├── request/             		# 🌐 通讯方案：底层 httpx 异步封装与平台拦截器
-├── token_storage/       # 🗄️ 凭据存储：支持 Redis 或文件驱动
-└── utils/               			# 🔧 通用工具：动态模块发现器 (DynamicManager) 与路径助手
+├── mcp/                        # 🔌 MCP 适配：支持全自动接入 OpenClaw / Claude Desktop
+├── main.py                     # 🚀 核心入口：控制全链路流转与浏览器自动环境初始化
+├── push_scheduler.py           # ⏰ 守护进程：基于 Cron 规则的定时推送服务
+├── config/                     # ⚙️ 配置中心：config.yaml 静态配置存放
+├── scripts/                    # 🛠️ 运维脚本：PyInstaller 打包配置 (.spec) 与启动脚本
+├── api/                        # 📡 接口定义：各平台声明式 API 映射
+├── crawlers/                   # 🔍 智能采集：各平台 Commits 爬虫实现
+├── rpa/                        # 🖱️ 自动化执行：Playwright 驱动的表单自动填报逻辑
+├── providers/                  # 🤖 模型适配：各 AI 大模型的 Payload 与解析器
+├── request/                    # 🌐 通讯方案：底层 httpx 异步封装与平台拦截器
+├── token_storage/              # 🗄️ 凭据存储：支持 Redis 或文件驱动
+└── utils/                      # 🔧 通用工具：动态模块发现器 (DynamicManager) 与路径助手
 ```
 
 ---
