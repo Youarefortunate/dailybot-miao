@@ -175,17 +175,14 @@ DailyBot/
 **✨ 即时生效特性**：
 - 当你开启 `auto_start` 并运行脚本时，程序会立即为您在后台拉起一个**静默运行**的服务实例。
 
-### 3. 静默化原理
-- 系统利用 PowerShell 的 `-WindowStyle Hidden` 特性。
-- 开机自启动或通过脚本同步配置后，程序会静默转入后台。你可以在**任务管理器**中看到 `python.exe` 进程正在工作中。
+### 3. 关闭自启动
 
-### 4. 关闭自启动
 1. 将 `config/config.yaml` 中的 `auto_start` 修改为 `false`。
 2. 再次双击运行 `scripts/DailyBot.bat`。
 3. 系统将自动移除 Windows 启动文件夹中的 `DailyBotScheduler` 快捷方式。
 - *提示：若需彻底结束当前正在后台运行的实例，请在任务管理器中手动结束 Python 进程。*
 
-### 5. 更改定时配置
+### 4. 更改定时配置
 
 1. 当你手动修改`config.yaml`或者`.env`文件里面的配置时并且你想这个windows定时任务按照最新的配置执行，你需要重新双击运行`scripts/DailyBot.bat`脚本，这将会将之前的旧进程杀死，重新创建一个按照目前最新配置的新进程
 2. 每次创建一个进程就会在`logs/.scheduler.lock`里面显示创建的进程`PID`，此外还可以查看`logs/run_dailybot_error.log`查看每次命令启动的日志
