@@ -90,7 +90,7 @@ async def trigger_rpa(platform_name: str, summary_json: str):
             return
 
         # 3. 获取 RPA 实例
-        rpa_instance = RPAFactory.get_rpa(platform_name, config._yaml_config)
+        rpa_instance = RPAFactory.get_rpa(platform_name, config)
         if not rpa_instance:
             log.warning(f"⚠️ [RPA] 未发现 {platform_name} 的 RPA 驱动实现，已跳过。")
             return
