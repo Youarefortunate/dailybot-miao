@@ -243,6 +243,11 @@ class BaseRPA(ABC):
             # 执行填报
             await self.fill_form(report_data)
 
+            logger.info(
+                f"[{self.RPA_NAME}] 所有数据填充任务执行完毕，等待 2 分钟后自动关闭浏览器..."
+            )
+            await asyncio.sleep(120)
+
         except Exception as e:
             # 针对用户手动关闭浏览器的情况进行静默处理，并提供友好的日志提示
             err_msg = str(e)

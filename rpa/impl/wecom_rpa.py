@@ -147,7 +147,10 @@ class WeComRPA(BaseRPA):
         await self._click_finish()
         await self._human_sleep(2)
 
-        # 4. 检查配置决定是否点击“提交” (Step 8)
+        # 4. 清理可能存在的缺陷行（空行）
+        await self._cleanup_defect_rows()
+
+        # 5. 检查配置决定是否点击“提交” (Step 8)
         auto_submit = (
             self.config.get("platforms", {})
             .get(self.RPA_NAME, {})
@@ -411,3 +414,85 @@ class WeComRPA(BaseRPA):
                 f"警告：请确认您的网络状态。如果网络正常，极大可能是该链接已被企业微信风控限制，建议在 config.yaml 中更新最新的 form_url 后重试。"
             )
         return False
+
+    async def _cleanup_defect_rows(self):
+        """
+        检查并删除表单中的缺陷行（包含 empty-placeholder 的行）。
+        """
+        logger.info(f"[{self.RPA_NAME}] 正在检查并清理表单缺陷行...")
+
+        # 缺陷行的特征：主表格区域内的 tr 包含 .empty-placeholder
+        defect_row_selector = (
+            ".table-area-wrapper tr.table-body-line-wrapper:has(.empty-placeholder)"
+        )
+        # 鼠标移入表格行显示的工具tool
+        trashbin_selector = ".hover-tool-bar .hover-tool-bar-trashbin-wrapper"
+
+        try:
+            # 循环检测并删除，直到没有缺陷行为止
+            while True:
+                # 重新获取缺陷行，因为删除后 DOM 会变
+                rows = await self.page.query_selector_all(defect_row_selector)
+                if not rows:
+                    logger.info(f"[{self.RPA_NAME}] 未发现缺陷行，清理完毕。")
+                    break
+
+                logger.warning(
+                    f"[{self.RPA_NAME}] 发现 {len(rows)} 条缺陷行，准备清理..."
+                )
+
+                # 倒序处理以减少 DOM 变动影响（虽然循环中每次重新获取更保险，但在单次循环内倒序更优雅）
+                for i in range(len(rows) - 1, -1, -1):
+                    row = rows[i]
+                    # 确保可见
+                    await row.scroll_into_view_if_needed()
+
+                    # 1. 移入缺陷行
+                    await row.hover()
+                    logger.debug(
+                        f"[{self.RPA_NAME}] 已悬停在第 {i+1} 条缺陷行，等待 toolbar 出现..."
+                    )
+
+                    # 2. 等待 1s
+                    await asyncio.sleep(1)
+
+                    # 3. 点击删除图标
+                    trashbin = await self.page.query_selector(trashbin_selector)
+                    if trashbin:
+                        await trashbin.click()
+                        logger.debug(
+                            f"[{self.RPA_NAME}] 已点击删除图标，等待确认弹窗..."
+                        )
+                        await self._human_sleep(1)
+
+                        # 4. 处理二次确认弹窗
+                        confirm_modal_selector = ".dui-modal.form-confirm"
+                        confirm_btn_selector = (
+                            f"{confirm_modal_selector} .dui-modal-footer-ok"
+                        )
+                        try:
+                            # 等待并点击“确认”按钮
+                            confirm_btn = await self.page.wait_for_selector(
+                                confirm_btn_selector, timeout=3000
+                            )
+                            if confirm_btn:
+                                await confirm_btn.click()
+                                logger.info(
+                                    f"[{self.RPA_NAME}] 已点击“确认”删除缺陷行。"
+                                )
+                                await self._human_sleep(1)  # 等待删除动画和 DOM 更新
+                        except Exception as e:
+                            logger.warning(
+                                f"[{self.RPA_NAME}] 未检测到删除确认弹窗或点击确认失败: {e}"
+                            )
+                    else:
+                        logger.warning(
+                            f"[{self.RPA_NAME}] 未能找到删除图标 (.hover-tool-bar-trashbin-wrapper)，跳过该行。"
+                        )
+
+                # 再次执行 while 循环检测，确保完全清理干净 (特别是分页或动态加载的情况)
+                await self._human_sleep(0.5)
+
+        except Exception as e:
+            logger.error(f"[{self.RPA_NAME}] 清理缺陷行时发生异常: {e}")
+            # 清理失败不应阻断整体流程，记录错误即可
