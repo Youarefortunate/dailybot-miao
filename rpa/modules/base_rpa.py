@@ -28,7 +28,7 @@ class BaseRPA(ABC):
         self.page = None
 
         # 频率控制相关
-        platform_config = self.config.get("platforms", {}).get(self.RPA_NAME, {})
+        platform_config = self.config.get(self.RPA_NAME, {})
         rpa_config = platform_config.get("rpa", {})
 
         # 0.1 (最快) - 1 (模拟真人)
@@ -77,7 +77,7 @@ class BaseRPA(ABC):
         self.playwright = await async_playwright().start()
 
         # 提取平台通用配置逻辑
-        platform_config = self.config.get("platforms", {}).get(self.RPA_NAME, {})
+        platform_config = self.config.get(self.RPA_NAME, {})
         rpa_config = platform_config.get("rpa", {})
 
         browser_type = rpa_config.get("browser_type", "chrome")

@@ -124,9 +124,14 @@ class WeComRPA(BaseRPA):
             modal_selector = ".dui-modal-content"
             await self.page.wait_for_selector(modal_selector, timeout=10000)
 
-            # 填充字段
-            await self._fill_modal_input("工作内容", item.get("content", ""))
-            await self._fill_modal_input("工作成果", item.get("result", ""))
+            # 填充字段 (仅第一条记录使用双击全选覆盖，后续新增行使用单机)
+            is_first = index == 0
+            await self._fill_modal_input(
+                "工作内容", item.get("content", ""), dbl_click=is_first
+            )
+            await self._fill_modal_input(
+                "工作成果", item.get("result", ""), dbl_click=is_first
+            )
             await self._fill_modal_time("开始时间", item.get("start_time", ""))
             await self._fill_modal_time("结束时间", item.get("end_time", ""))
             await self._fill_modal_choice("重要性与紧急度", item.get("priority", ""))
@@ -148,14 +153,15 @@ class WeComRPA(BaseRPA):
         await self._human_sleep(2)
 
         # 4. 清理可能存在的缺陷行（空行）
-        await self._cleanup_defect_rows()
+        auto_cleanup = (
+            self.config.get(self.RPA_NAME, {}).get("rpa", {}).get("auto_cleanup", True)
+        )
+        if auto_cleanup:
+            await self._cleanup_defect_rows()
 
         # 5. 检查配置决定是否点击“提交” (Step 8)
         auto_submit = (
-            self.config.get("platforms", {})
-            .get(self.RPA_NAME, {})
-            .get("rpa", {})
-            .get("auto_submit", False)
+            self.config.get(self.RPA_NAME, {}).get("rpa", {}).get("auto_submit", False)
         )
         if auto_submit:
             logger.info(f"[{self.RPA_NAME}] 检测到 auto_submit=true，执行最终提交...")
@@ -184,25 +190,54 @@ class WeComRPA(BaseRPA):
         await self.page.click(today_btn)
         await self._human_sleep(1)
 
-        # 4. 点击表格第二行打开模态框
-        table_row = ".table-area-wrapper tbody .table-body-line-wrapper:nth-child(2)"
-        await self.page.wait_for_selector(table_row)
-        await self.page.click(table_row)
-        await self._human_sleep(1)
+        # 4. 触发逻辑：点击表格行或新增行打开模态框
+        row_selector = ".table-area-wrapper tbody .table-body-line-wrapper"
+        try:
+            # 确保表格区域已加载
+            await self.page.wait_for_selector(".table-area-wrapper", timeout=5000)
 
-    async def _fill_modal_input(self, title: str, value: str):
+            # 检测当前表格行数
+            rows = await self.page.query_selector_all(row_selector)
+            if not rows:
+                logger.info(
+                    f"[{self.RPA_NAME}] 检测到表格完全为空，正在点击“新增一行”并自动调起表单..."
+                )
+                add_line_btn = ".add-area .add-line-wrapper"
+                await self.page.click(add_line_btn)
+                # “新增一行”操作后表单会自动弹出，无需额外动作，直接等待模态框出现
+                await self._human_sleep(1)
+                return
+
+            # 存在默认的表格空行，点击第二行
+            logger.info(f"[{self.RPA_NAME}] 检测到表格不为空，点击首行开启表单...")
+            target_row = (
+                ".table-area-wrapper tbody .table-body-line-wrapper:nth-child(2)"
+            )
+            await self.page.wait_for_selector(target_row, timeout=3000)
+            await self.page.click(target_row)
+            await self._human_sleep(1)
+        except Exception as e:
+            logger.error(f"[{self.RPA_NAME}] 点击表格空行显示表单时失败: {e}")
+            raise e
+
+    async def _fill_modal_input(self, title: str, value: str, dbl_click: bool = False):
         """填充模态框内的文本/多行输入框"""
         if not value:
             return
         base_selector = f'.dui-modal-content .question:has(.question-main-content > .question-title > div:first-child span:has-text("{title}")) .question-content'
         wrapper_selector = f"{base_selector} .Input-module_inputWrapper__pgeTK"
 
-        logger.debug(f'[{self.RPA_NAME}] 正在尝试填充 "{title}": {value}')
+        logger.debug(
+            f'[{self.RPA_NAME}] 正在尝试填充 "{title}": {value} (dbl_click={dbl_click})'
+        )
 
         try:
-            # 等待容器并点击聚焦
+            # 等待容器并聚焦
             wrapper = await self.page.wait_for_selector(wrapper_selector)
-            await wrapper.click()
+            if dbl_click:
+                await wrapper.dblclick()
+            else:
+                await wrapper.click()
             await self._human_sleep(0.5)
 
             # 优先查找真正的 textarea 或 input 子元素

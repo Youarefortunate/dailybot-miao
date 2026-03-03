@@ -4,7 +4,7 @@ import json
 from typing import Any
 from loguru import logger
 from dotenv import load_dotenv
-from utils.path_helper import get_resource_path
+from utils.path_helper import get_resource_path, get_app_dir
 
 
 class Config:
@@ -43,24 +43,33 @@ class Config:
         if os.path.exists(env_path):
             load_dotenv(env_path, override=True)
 
-        # 再尝试加载当前运行目录下的 .env (用户自定义)
-        local_env = os.path.join(os.getcwd(), ".env")
+        # 再尝试加载程序运行目录下的 .env (用户自定义)
+        local_env = os.path.join(get_app_dir(), ".env")
         if os.path.exists(local_env):
             load_dotenv(local_env, override=True)
 
     @staticmethod
     def load_yaml_config():
         """
-        从 config/config.yaml 读取配置。
+        从 config.yaml 或 config/config.yaml 读取配置。
+        支持外部化覆盖，优先级：当前执行目录 > config 子目录 > 内部打包路径。
         """
 
-        # 内部打包路径
+        # 1. 内部打包路径 (默认逻辑)
         yaml_path = get_resource_path(os.path.join("config", "config.yaml"))
 
-        # 外部工作目录路径 (允许用户外部覆盖)
-        local_yaml = os.path.join(os.getcwd(), "config", "config.yaml")
+        # 2. 外部运行目录路径 (允许用户外部覆盖)
+        app_dir = get_app_dir()
+        local_yaml_direct = os.path.join(app_dir, "config.yaml")  # 与 .env 同级
+        local_yaml_subdir = os.path.join(app_dir, "config", "config.yaml")
 
-        target_path = local_yaml if os.path.exists(local_yaml) else yaml_path
+        # 确定最终使用的路径
+        if os.path.exists(local_yaml_direct):
+            target_path = local_yaml_direct
+        elif os.path.exists(local_yaml_subdir):
+            target_path = local_yaml_subdir
+        else:
+            target_path = yaml_path
 
         if not os.path.exists(target_path):
             return {}
@@ -204,6 +213,24 @@ class Config:
             else:
                 found = False
                 break
+
+        # 如果没找到，尝试补全前缀逻辑 (免前缀寻址)
+        if not found:
+            _CATEGORY_KEYS = ["platforms", "models", "crawler_sources"]
+            for cat in _CATEGORY_KEYS:
+                # 尝试补全分类前缀，例如 "wecom" -> "platforms.wecom"
+                temp_keys = [cat] + keys
+                current = self._yaml_config
+                found_cat = True
+                for key in temp_keys:
+                    if isinstance(current, dict) and key in current:
+                        current = current[key]
+                    else:
+                        found_cat = False
+                        break
+                if found_cat:
+                    found = True
+                    break
 
         base_val = current if found else default
 
