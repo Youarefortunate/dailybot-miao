@@ -386,7 +386,7 @@ class WeComRPA(BaseRPA):
     async def _click_submit(self):
         """点击“提交”按钮 (Step 8)"""
         submit_btn = (
-            '.dui-modal-content .FillFooter_footer__X07QG button:has-text("提交")'
+            '.form-fill-pc .FillFooter_footer__X07QG button:has-text("提交")'
         )
         try:
             btn = await self.page.wait_for_selector(submit_btn)
