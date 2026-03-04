@@ -76,7 +76,7 @@ class AIFactory(BaseAIProvider):
         """
         chat_req = self.api_reqs.get("chat_completions")
         if not chat_req:
-            return (
+            raise ValueError(
                 f"[{self.AI_PROVIDER_NAME}] 总结失败：未找到有效接口 (chat_completions)"
             )
 
@@ -87,11 +87,13 @@ class AIFactory(BaseAIProvider):
             else config.get_model(self.AI_PROVIDER_NAME)
         )
         if not cfg:
-            return f"[{self.AI_PROVIDER_NAME}] 总结失败：未找到该模型的配置信息"
+            raise ValueError(
+                f"[{self.AI_PROVIDER_NAME}] 总结失败：未找到该模型的配置信息"
+            )
 
         # 校验必填项
         if not cfg.get("base_url"):
-            return f"[{self.AI_PROVIDER_NAME}] 配置错误：缺少 'base_url'"
+            raise ValueError(f"[{self.AI_PROVIDER_NAME}] 配置错误：缺少 'base_url'")
 
         # 2. 准备渲染上下文
         ai_prompts = prompts.get(self.AI_PROVIDER_NAME, {})
@@ -127,7 +129,9 @@ class AIFactory(BaseAIProvider):
         # 优先从 cfg 取 model，这里不需要再手动拼接环境变量名，Config.get_model 已经处理了优先级
         model_id = cfg.get("model")
         if not model_id:
-            return f"[{self.AI_PROVIDER_NAME}] 配置错误：缺少指定使用的ai模型名称"
+            raise ValueError(
+                f"[{self.AI_PROVIDER_NAME}] 配置错误：缺少指定使用的ai模型名称"
+            )
 
         context = {
             "model": model_id,
@@ -141,9 +145,11 @@ class AIFactory(BaseAIProvider):
             try:
                 payload = self._render_payload(payload_template, context)
             except KeyError as e:
-                return f"[{self.AI_PROVIDER_NAME}] 负载渲染失败：模板中引用了未定义的变量 {str(e)}"
+                raise ValueError(
+                    f"[{self.AI_PROVIDER_NAME}] 负载渲染失败：模板中引用了未定义的变量 {str(e)}"
+                )
             except Exception as e:
-                return f"[{self.AI_PROVIDER_NAME}] 负载渲染出错：{str(e)}"
+                raise ValueError(f"[{self.AI_PROVIDER_NAME}] 负载渲染出错：{str(e)}")
         else:
             # 默认使用标准 OpenAI 格式模板
             payload = {
@@ -179,13 +185,11 @@ class AIFactory(BaseAIProvider):
             res_data = await chat_req.fetch(payload)
             final_res = self._parse_response(res_data)
             if extra_prompts:
-                logger.debug(
-                    f"✨ [AIFactory] 响应预览 (前200位): {final_res[:200]}..."
-                )
+                logger.debug(f"✨ [AIFactory] 响应预览 (前200位): {final_res[:200]}...")
             return final_res
         except Exception as e:
             logger.error(f"[{self.AI_PROVIDER_NAME}] 总结请求异常: {str(e)}")
-            return f"错误: {str(e)}"
+            raise RuntimeError(f"[{self.AI_PROVIDER_NAME}] 总结请求异常: {str(e)}")
 
     def _render_payload(self, template, context):
         """

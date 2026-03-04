@@ -208,6 +208,7 @@ async def run_reporting_logic():
 
         except Exception as e:
             log.error(f"工作流 {wf.WORKFLOW_NAME} 最终处置失败: {e}")
+            await wf.on_report_failure(str(e), ctx)
 
     # 💡 打印开启了 RPA 的平台状态提示
     for wf in active_workflows:

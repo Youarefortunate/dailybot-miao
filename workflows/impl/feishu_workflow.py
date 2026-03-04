@@ -113,7 +113,7 @@ class FeishuWorkflow(BaseWorkflow):
 
         if not provider_key:
             logger.error(f"[{self.WORKFLOW_NAME}] 未配置 AI 模型 (ai_model)。")
-            return "总结失败: 未配置 AI 模型"
+            raise ValueError("总结失败: 未配置 AI 模型")
 
         # 获取模型详情
         model_cfg = config.get_model(provider_key)
@@ -126,7 +126,7 @@ class FeishuWorkflow(BaseWorkflow):
         ai_instance = AIFactory.get_ai(provider_key)
         if not ai_instance:
             logger.error(f"[{self.WORKFLOW_NAME}] 未找到模型供应商: {provider_key}")
-            return "总结失败: 未找到模型供应商"
+            raise ValueError("总结失败: 未找到模型供应商")
 
         logger.info(
             f"[{self.WORKFLOW_NAME}] 正在调度 {model_name} (model_id: {model_id}) 模型生成总结..."
