@@ -84,12 +84,13 @@ graph TD
         MCP_S -->|Trigger| START
     end
 
-    subgraph "6. 守护进程 (Scheduler & Autostart)"
-        SCHEDULER[push_scheduler.py] --> LOCK[单例检测 & 进程锁]
-        LOCK -->|检测到旧进程| KILL[自动终止旧实例]
-        KILL --> SERVICE[启动调度服务]
+    subgraph "6. 定时与守护进程 (Scheduler & Autostart)"
+        CONFIG_S[加载 scheduler 配置] --> SCHEDULER[push_scheduler.py]
+        SCHEDULER --> LOCK[单例检测 & 进程锁]
+        LOCK -->|检测到旧进程| KILL[自动清除旧实例]
+        KILL --> SERVICE[启动 APScheduler 调度服务]
         LOCK -->|无运行实例| SERVICE
-        SERVICE -->|Cron 触发| START
+        SERVICE -->|基于 tasks/default_time 触发| START
     end
 
     subgraph "1. 环境自检 (System Checker)"
@@ -106,19 +107,21 @@ graph TD
         FS_CARD -->|用户点击卡片授权| FS_SUCCESS[更新凭据 & 自动重试工作流]
     end
 
-    subgraph "2. 智能采集 (Crawlers)"
+    subgraph "2. 智能采集 (Crawlers) & 伪装补全"
         OAUTH_CHECK -->|授权通过| C_FACTORY[Crawler Factory]
         FS_CHECK & FS_REFRESH & FS_SUCCESS -->|授权通过| C_FACTORY
         C_FACTORY -->|异步并行| GL["GitLab (Async)"]
         C_FACTORY -->|Upcoming| GH["GitHub"]
         GL & GH --> RAW_DATA[原始 Commits 汇总]
+        RAW_DATA -->|评估 threshold 条数| CAMOUFLAGE[Camouflage 伪装系统]
+        CAMOUFLAGE -->|提取 lookback 历史并标记使用| MERGE_DATA[填充后的待总结报文]
     end
 
     subgraph "3. 智脑中心 (Providers)"
-        RAW_DATA -->|去重合并请求| AI_FACTORY[AI Factory]
+        MERGE_DATA -->|去重合并请求| AI_FACTORY[AI Factory]
         AI_FACTORY -->|Doubao| DB[豆包 Pro]
-        AI_FACTORY -->|DeepSeek| DS[DeepSeek V3]
-        AI_FACTORY -->|Gemini| GM[Gemini 1.5]
+        AI_FACTORY -->|DeepSeek| DS[Claude Code 4.6]
+        AI_FACTORY -->|Gemini| GM[Gemini 3.1 Pro]
         DB & DS & GM --> SUMMARY[AI 生成总结内容]
     end
 
