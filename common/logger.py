@@ -1,12 +1,21 @@
+import os
 import sys
 from loguru import logger
 from common.config import config
+from utils.path_helper import get_app_dir
 
 # 获取日志配置
 log_cfg = config.get("log", {})
 log_level = log_cfg.get("level", "INFO")
 file_level = log_cfg.get("file_level", "DEBUG")
-log_path = log_cfg.get("path", "logs/dailybot_{time:YYYY-MM-DD}.log")
+log_path_raw = log_cfg.get("path", "logs/dailybot_{time:YYYY-MM-DD}.log")
+
+# 强制将相对路径转换为基于程序运行目录的绝对路径
+if not os.path.isabs(log_path_raw):
+    log_path = os.path.join(get_app_dir(), log_path_raw)
+else:
+    log_path = log_path_raw
+
 log_rotation = log_cfg.get("rotation", "00:00")
 log_retention = log_cfg.get("retention", "7 days")
 

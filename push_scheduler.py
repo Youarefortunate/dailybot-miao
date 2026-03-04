@@ -9,6 +9,7 @@ from apscheduler.triggers.cron import CronTrigger
 from loguru import logger
 import psutil
 from common.config import config
+from utils.path_helper import get_app_dir, get_resource_path
 
 
 async def run_job():
@@ -88,9 +89,10 @@ def check_singleton(is_service: bool = False):
     :param is_service: 是否为后台服务模式
     :return: (bool, int) -> (是否通过检测, 冲突的 PID)
     """
-    from utils.path_helper import get_root_path
-
-    lock_file = os.path.join(get_root_path(), "logs", ".scheduler.lock")
+    # 只有 is_service 且非 is_once 且不冲突时，才写入锁
+    # 使用 get_app_dir() 获取 .exe 物理同级目录，避免写入临时目录
+    app_dir = get_app_dir()
+    lock_file = os.path.join(app_dir, "logs", ".scheduler.lock")
     os.makedirs(os.path.dirname(lock_file), exist_ok=True)
 
     # 1. 检测旧实例并尝试清理
@@ -173,29 +175,33 @@ def manage_windows_autostart(enabled: bool, is_service: bool = False):
     """
     import winshell
     from win32com.client import Dispatch
-    from utils.path_helper import get_root_path
+
+    app_dir = get_app_dir()
 
     startup_path = winshell.startup()
     shortcut_name = "DailyBotScheduler.lnk"
     shortcut_path = os.path.join(startup_path, shortcut_name)
-
-    root_dir = get_root_path()
-    bat_path = os.path.join(root_dir, "scripts", "DailyBot.bat")
+    bat_path = os.path.join(app_dir, "scripts", "DailyBot.bat")
 
     if enabled:
         try:
             shell = Dispatch("WScript.Shell")
             shortcut = shell.CreateShortCut(shortcut_path)
 
-            # 使用 powershell 以隐藏窗口模式运行 DailyBot.bat，并携带 --service 参数
-            # --service 参数用于标识这是一个后台服务进程，防止无限递归拉起新进程
-            powershell_args = (
-                f"-WindowStyle Hidden -Command \"cmd /c '{bat_path}' --service\""
-            )
-
-            shortcut.Targetpath = "powershell.exe"
-            shortcut.Arguments = powershell_args
-            shortcut.WorkingDirectory = root_dir
+            # 检测是否在打包环境中运行
+            if getattr(sys, "frozen", False):
+                # 如果是打包环境，直接运行 .exe 自身
+                target_exe = sys.executable
+                powershell_args = f"-ExecutionPolicy Bypass -WindowStyle Hidden -Command \"& '{target_exe}' --service\""
+                shortcut.Targetpath = target_exe
+                shortcut.Arguments = "--service"
+            else:
+                # 源码环境：通过 PowerShell 直接调用 .bat
+                # 使用 & 符号调用路径，并添加 -ExecutionPolicy Bypass 确保执行权限
+                powershell_args = f"-ExecutionPolicy Bypass -WindowStyle Hidden -Command \"& '{bat_path}' --service\""
+                shortcut.Targetpath = "powershell.exe"
+                shortcut.Arguments = powershell_args
+            shortcut.WorkingDirectory = app_dir
             shortcut.IconLocation = "powershell.exe,0"
             shortcut.save()
             logger.info(f"已更新静默启动快捷方式: {shortcut_path}")
@@ -236,6 +242,15 @@ def setup_scheduler():
 
     # 1. 检测运行模式
     is_service = "--service" in sys.argv
+    is_once = "--once" in sys.argv
+
+    # 1.1 单次运行模式直接调用 main
+    if is_once:
+        logger.info("[手动任务] 立即执行一次上报流程...")
+        import main
+
+        asyncio.run(main.main())
+        return
 
     # 2. 单例检测与热重载逻辑
     # 如果是手动双击运行 (not is_service)，则由 check_singleton 负责清理旧进程

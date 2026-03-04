@@ -26,14 +26,14 @@ platforms:
       enabled: true
       speed: 1 # 自动化填写速度倍率: 0.1 (最快) - 1 (最慢 - 模拟真人)。非法值将默认为 1
       max_retry: 1 # 页面加载错误时的最大刷新重试次数 (0-N)
-      auto_submit: false # 是否自动提交
+      auto_submit: true # 是否自动提交
       auto_cleanup: true # 是否自动检测并删除缺陷行
       browser_type: "chrome" # 浏览器类型: "chrome" 或 "msedge"
       # 企业微信邀请填写日报的 URL
-      form_url: "https://doc.weixin.qq.com/journal/create?docid=c2_AEoAdAfTAA8AZIAWgZUAEUCNuRb0l5JOj_fork"
+      form_url: ""
       # 浏览器类型: "chrome" 或 "msedge"
       browser_user_data_dir: "" # 为空时默认保存到当前项目根目录下的 .browser_profiles/指定浏览器类型 文件夹；如果有需求也可以填写绝对路径, 例如 "C:\\Users\\Default\\AppData\\Local\\Google\\Chrome\\User Data"
-      browser_executable_path: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" # 浏览器的绝对路径，如果你用 edge，通常是 "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"，留空则尝试使用 playwright 下载的内核
+      browser_executable_path: "" # 浏览器的绝对路径，如果你用 edge，通常是 "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"，留空则尝试使用 playwright 下载的内核
 
 # AI 模型配置
 models:
@@ -101,7 +101,6 @@ models:
     params:
       timeout: 60
 
-
 # 抓取平台与采集源配置
 crawler_sources:
   gitlab:
@@ -119,17 +118,17 @@ crawler_sources:
         # 支持单个日期或日期区间，每个元素以逗号分隔起止日期
         # crawl_dates:
         #   - "2025-12-31"
-          # - "2026-01-04, 2026-01-05"
+        # - "2026-01-04, 2026-01-05"
       - path: "frontend_b2bwings/b2b-wings-easyloan-admin"
         branch: "test"
         name: "农融易后台管理系统"
     # 伪装配置
     camouflage:
-      enabled: true       # 是否启用
-      threshold: 4        # 执行阈值：当日该平台总提交数少于此值时触发
-      max_items: 5        # 目标总条数：触发后，伪装记录数 = max_items - 真实采集数
-      lookback_days: 14    # 回溯天数：寻找素材的范围
-      cooldown_days: 10    # LRU 冷却天数：素材使用后的禁止期 (天)
+      enabled: true # 是否启用
+      threshold: 4 # 执行阈值：当日该平台总提交数少于此值时触发
+      max_items: 5 # 目标总条数：触发后，伪装记录数 = max_items - 真实采集数
+      lookback_days: 14 # 回溯天数：寻找素材的范围
+      cooldown_days: 10 # LRU 冷却天数：素材使用后的禁止期 (天)
 
 # 启用的工作流，名称要和 platforms 中的 key 对应
 enabled_workflows: ["feishu"]
@@ -142,8 +141,8 @@ scheduler:
   default_time: "18:20"
   tasks: # 指定特定时间运行
     - # 示例：二月工作日 18:20 运行
-      time: "18:23"
-      weekdays: [1, 2, 3, 4, 5]  # 双休
+      time: "18:20"
+      weekdays: [1, 2, 3, 4, 5] # 双休
   #   - # 示例：特定日期特定时间
   #     dates: ["2026-02-27"]
   #     time: "20:00"
@@ -151,10 +150,10 @@ scheduler:
 
 # 日志配置
 log:
-  level: "INFO"          # 控制台输出级别
-  file_level: "DEBUG"    # 文件保存级别
-  rotation: "00:00"      # 日志轮转时间 (每天零点)
-  retention: "7 days"    # 日志保留时间
+  level: "INFO" # 控制台输出级别
+  file_level: "DEBUG" # 文件保存级别
+  rotation: "00:00" # 日志轮转时间 (每天零点)
+  retention: "7 days" # 日志保留时间
   path: "logs/dailybot_{time:YYYY-MM-DD}.log" # 日志路径模板
 
 # Redis Token 存储配置
