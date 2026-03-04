@@ -23,6 +23,7 @@ class AIFactory(BaseAIProvider):
         self.api_reqs = {}
         self.AI_PROVIDER_NAME = name or getattr(self, "AI_PROVIDER_NAME", "unknown")
         self.model_cfg = model_cfg
+        self.model_id = None
 
         if name and name != "unknown" and model_cfg:
             self._init_dynamic_provider(name, model_cfg)
@@ -126,8 +127,21 @@ class AIFactory(BaseAIProvider):
 
         user_content = f"{user_content}\n\n{text}" if user_content else text
 
-        # 优先从 cfg 取 model，这里不需要再手动拼接环境变量名，Config.get_model 已经处理了优先级
-        model_id = cfg.get("model")
+        # 优先使用显式指定的 model_id (反查询址带入)，否则读旧配置 model 或 models 数组第一项
+        model_id = getattr(self, "model_id", None)
+        # 兼容遗留配置：如果传进来的是大类名（如 doubao），则认为未指定具体 model，走降级获取
+        if model_id == self.AI_PROVIDER_NAME:
+            model_id = None
+
+        if not model_id:
+            model_id = cfg.get("model")
+            if (
+                not model_id
+                and cfg.get("models")
+                and isinstance(cfg.get("models"), list)
+            ):
+                model_id = cfg.get("models")[0]
+
         if not model_id:
             raise ValueError(
                 f"[{self.AI_PROVIDER_NAME}] 配置错误：缺少指定使用的ai模型名称"
@@ -233,21 +247,31 @@ class AIFactory(BaseAIProvider):
         return content.replace("```json", "").replace("```", "").strip()
 
     @staticmethod
-    def get_ai(name: str):
+    def get_ai(name: str, model_id: str = None):
         """
         工厂入口：获取 AI 供应商实例。
+        :param name: 供应商名称或具体的模型 ID（如果不明确指定的话，兼容直下逻辑）
+        :param model_id: (可选) 明确指定的具体模型 ID，如 doubao-seed-xxx
         """
         cls = ai_manager.get_class(name)
+
+        instance = None
         if cls:
-            return cls()
+            instance = cls()
+        else:
+            # 动态生成逻辑
+            model_cfg = config.get_model(name)
+            if model_cfg:
+                # 预校验基础配置
+                if not model_cfg.get("base_url"):
+                    logger.error(
+                        f"[AIFactory] 拒绝生产 AI '{name}'：缺少 base_url 配置"
+                    )
+                    return None
+                instance = AIFactory(name=name, model_cfg=model_cfg)
 
-        # 动态生成逻辑
-        model_cfg = config.get_model(name)
-        if model_cfg:
-            # 预校验基础配置
-            if not model_cfg.get("base_url"):
-                logger.error(f"[AIFactory] 拒绝生产 AI '{name}'：缺少 base_url 配置")
-                return None
-            return AIFactory(name=name, model_cfg=model_cfg)
+        # 强制挂载 model_id 状态
+        if instance:
+            instance.model_id = model_id
 
-        return None
+        return instance

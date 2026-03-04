@@ -550,27 +550,27 @@ models:
     name: "豆包大模型"
     api_key: "${DOUBAO_API_KEY}"
     base_url: "https://ark.cn-beijing.volces.com/api/v3"
-    model: "ep-xxx-xxx"               # 接入点 Endpoint ID
+    models: ["ep-xxx-xxx"]               # 接入点 Endpoint ID
     params: { timeout: 60 }
 
   glm:
     name: "智谱 GLM"
     api_key: "${GLM_API_KEY}"
     base_url: "https://ark.cn-beijing.volces.com/api/v3"
-    model: "glm-4-xxx"
+    models: ["glm-4-xxx"]
     params: { timeout: 60 }
 
   deepseek:
     name: "DeepSeek V3"
     api_key: "${DEEPSEEK_API_KEY}"
     base_url: "https://ark.cn-beijing.volces.com/api/v3"
-    model: "deepseek-v3-xxx"
+    models: ["deepseek-v3-xxx"]
 
   gemini:
     name: "Gemini 1.5 Flash"
     api_key: "${GEMINI_API_KEY}"
     base_url: "https://generativelanguage.googleapis.com/v1beta"
-    model: "gemini-1.5-flash"
+    models: ["gemini-1.5-flash"]
 
 # --- 3. 代码仓库数据源 ---
 repos:

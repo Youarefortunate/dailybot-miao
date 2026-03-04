@@ -2,7 +2,7 @@
 platforms:
   # 飞书
   feishu:
-    ai_model: "doubao"
+    ai_model: ""
     app_id: ""
     app_secret: ""
     bot_token: ""
@@ -18,7 +18,7 @@ platforms:
       port: 8001
   # 企业微信
   wecom:
-    ai_model: "doubao"
+    ai_model: ""
     corp_id: ""
     corp_secret: ""
     # 自动化配置
@@ -69,35 +69,35 @@ models:
     name: "豆包大模型"
     api_key: ""
     base_url: ""
-    model: ""
+    models: []
     params:
       timeout: 60 # 设定1小时超时
   glm:
     name: "智谱清言大模型"
     api_key: ""
     base_url: ""
-    model: ""
+    models: []
     params:
       timeout: 60
   deepseek:
     name: "DeepSeek V3"
     api_key: ""
     base_url: ""
-    model: ""
+    models: []
     params:
       timeout: 60
   kimi:
     name: "Kimi K2"
     api_key: ""
     base_url: ""
-    model: ""
+    models: []
     params:
       timeout: 60
   gemini:
     name: "Gemini 3 Flash Preview"
     api_key: ""
     base_url: ""
-    model: ""
+    models: []
     params:
       timeout: 60
 

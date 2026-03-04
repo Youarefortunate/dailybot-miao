@@ -25,13 +25,16 @@ class WeComWorkflow(BaseWorkflow):
         执行 AI 总结逻辑
         """
         platform_config = config.get_platform(self.WORKFLOW_NAME)
-        provider_name = platform_config.get("ai_model")
+        provider_key = platform_config.get("ai_model")
 
-        if not provider_name:
+        if not provider_key:
             logger.error(f"[{self.WORKFLOW_NAME}] 未配置 AI 模型 (ai_model)。")
             raise ValueError("总结失败: 未配置 AI 模型")
 
-        ai_instance = AIFactory.get_ai(provider_name)
+        # 获取模型提供商名 (支持 provider 或 具体的大模型名 反查)
+        provider_name = config.get_provider_for_model(provider_key) or provider_key
+
+        ai_instance = AIFactory.get_ai(provider_name, model_id=provider_key)
         if not ai_instance:
             logger.error(
                 f"[{self.WORKFLOW_NAME}] 未找到相关 AI 模型实现: {provider_name}"

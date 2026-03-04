@@ -115,21 +115,26 @@ class FeishuWorkflow(BaseWorkflow):
             logger.error(f"[{self.WORKFLOW_NAME}] 未配置 AI 模型 (ai_model)。")
             raise ValueError("总结失败: 未配置 AI 模型")
 
+        # 获取模型提供商名 (支持 provider 或 具体的大模型名 反查)
+        provider_name = config.get_provider_for_model(provider_key) or provider_key
+
         # 获取模型详情
-        model_cfg = config.get_model(provider_key)
+        model_cfg = config.get_model(provider_name)
+        if not model_cfg:
+            logger.error(
+                f"[{self.WORKFLOW_NAME}] 未找到相关的提供商配置: {provider_name}"
+            )
+            raise ValueError(f"总结失败: 未找到提供商配置 {provider_name}")
+
         model_name = model_cfg.get("name", provider_key)
 
-        # 这里的 model_id 需要根据 provider_key 动态获取对应的 Config 属性
-        model_attr = f"{provider_key.upper()}_MODEL"
-        model_id = getattr(config, model_attr, "unknown")
-
-        ai_instance = AIFactory.get_ai(provider_key)
+        ai_instance = AIFactory.get_ai(provider_name, model_id=provider_key)
         if not ai_instance:
-            logger.error(f"[{self.WORKFLOW_NAME}] 未找到模型供应商: {provider_key}")
+            logger.error(f"[{self.WORKFLOW_NAME}] 未找到模型供应商: {provider_name}")
             raise ValueError("总结失败: 未找到模型供应商")
 
         logger.info(
-            f"[{self.WORKFLOW_NAME}] 正在调度 {model_name} (model_id: {model_id}) 模型生成总结..."
+            f"[{self.WORKFLOW_NAME}] 正在调度 {model_name} (model_id: {provider_key}) 模型生成总结..."
         )
         return await ai_instance.summarize(raw_report, extra_prompts=extra_prompts)
 

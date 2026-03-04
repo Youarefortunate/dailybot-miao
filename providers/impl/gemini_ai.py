@@ -25,7 +25,15 @@ class GeminiAI(AIFactory):
             self.model_cfg = config.get_model(self.AI_PROVIDER_NAME)
 
         cfg = self.model_cfg
-        model_id = cfg.get("model")
+        model_id = getattr(self, "model_id", None)
+        if not model_id:
+            model_id = cfg.get("model")
+            if (
+                not model_id
+                and cfg.get("models")
+                and isinstance(cfg.get("models"), list)
+            ):
+                model_id = cfg.get("models")[0]
 
         # 确保 payload 符合 Gemini 规范
         if not cfg.get("payload"):

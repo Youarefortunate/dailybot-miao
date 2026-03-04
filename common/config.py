@@ -100,11 +100,14 @@ class Config:
             # 不过最稳妥的是：统一调用 _get_value_for_attr(path, attr_name, yaml_value)
 
             env_key = self.path_to_env_key(path)
+            full_env_key = path.upper()  # 不剥离前缀的完整路径
             env_val = os.getenv(env_key)
 
-            # 特别兼容传统下划线命名 (例如 GITLAB_CRAWLER_SOURCES)
+            # 兼容带前缀的环境变量和传统下划线命名
             if env_val is None:
                 env_val = os.getenv(attr_name)
+            if env_val is None:
+                env_val = os.getenv(full_env_key)
 
             # 特殊处理 crawler_sources 中的列表解析 (统一点号规范)
             if "crawler_sources" in path and path.endswith(".repos"):
@@ -124,10 +127,15 @@ class Config:
         # 针对在 .env 中配了，但在 yaml 里没写的平台源
         for env_k, env_v in os.environ.items():
             env_k_upper = env_k.upper()
-            if env_k_upper.endswith("_REPOS"):
-                # 如果这个属性还没被设置过，基于环境变量为其创建
-                if not hasattr(self, env_k_upper):
-                    setattr(self, env_k_upper, self.parse_gitlab_crawler_sources(env_v))
+            if env_k_upper.endswith("_REPOS") or env_k_upper.endswith(".REPOS"):
+                attr_name = env_k_upper.replace(".", "_")
+                # 剥离分类前缀 (如 CRAWLER_SOURCES_)
+                for prefix in ["CRAWLER_SOURCES_"]:
+                    if attr_name.startswith(prefix):
+                        attr_name = attr_name[len(prefix) :]
+                        break
+                if not hasattr(self, attr_name):
+                    setattr(self, attr_name, self.parse_gitlab_crawler_sources(env_v))
 
     def iter_yaml_paths(self, prefix, data):
         """
@@ -215,6 +223,25 @@ class Config:
         """
         return self.get_merged_config("models", model_key)
 
+    def get_provider_for_model(self, model_id: str) -> str:
+        """
+        根据具体的模型 ID 遍历 models 配置，找到并返回挂载该模型的提供商
+        名称 (例如 doubao)。如果未找到，则返回 None。
+        """
+        models_cfg = self.get("models", {})
+        if not isinstance(models_cfg, dict):
+            return None
+
+        for provider_name, provider_cfg in models_cfg.items():
+            if isinstance(provider_cfg, dict):
+                provider_models = provider_cfg.get("models", [])
+                if isinstance(provider_models, list) and model_id in provider_models:
+                    return provider_name
+                elif provider_cfg.get("model") == model_id:
+                    return provider_name
+
+        return None
+
     def get(self, path: str, default: Any = None) -> Any:
         """
         按路径 (基于 . 分隔) 动态获取 YAML 配置，并用环境变量覆盖 (若存在)。
@@ -251,24 +278,27 @@ class Config:
 
         base_val = current if found else default
 
-        # 2. 构造环境变量对应的名（剥离分类前缀）
-        # path="wecom" -> env_base_key="WECOM"
-        # path="wecom.rpa" -> env_base_key="WECOM.RPA"
-        env_base_key = self.path_to_env_key(".".join(normalized_keys))
-        attr_name_key = self.path_to_attr_name(".".join(normalized_keys))
+        # 2. 构造环境变量对应的名（剥离分类前缀 + 完整路径）
+        normalized_path = ".".join(normalized_keys)
+        env_base_key = self.path_to_env_key(normalized_path)
+        attr_name_key = self.path_to_attr_name(normalized_path)
+        full_env_key = normalized_path.upper()  # 不剥离前缀的完整路径
 
         # 3. 环境变量优先级最高：精确匹配 (不区分大小写)
         for env_key, env_val in os.environ.items():
             env_k_up = env_key.upper()
-            if env_k_up == env_base_key or env_k_up == attr_name_key.upper():
+            if env_k_up in (env_base_key, attr_name_key.upper(), full_env_key):
                 return self._parse_env_value(env_val)
 
         # 4. 如果基础值是字典，或者基础值不存在但环境中有前缀匹配项（支持动态注入整个字典分支）
         prefix_dot = f"{env_base_key}."
         prefix_under = f"{attr_name_key}_"
+        full_prefix_dot = f"{full_env_key}."
 
         has_env_prefix = any(
-            k.upper().startswith(prefix_dot) or k.upper().startswith(prefix_under)
+            k.upper().startswith(prefix_dot)
+            or k.upper().startswith(prefix_under)
+            or k.upper().startswith(full_prefix_dot)
             for k in os.environ.keys()
         )
 
@@ -279,13 +309,14 @@ class Config:
             for env_key, env_val in os.environ.items():
                 env_key_upper = env_key.upper()
                 remaining = ""
-                # 尝试点号前缀匹配 (WECOM.RPA.FORM_URL)
-                if env_key_upper.startswith(prefix_dot):
+                # 尝试带前缀的点号匹配 (MODELS.DOUBAO.API_KEY)
+                if env_key_upper.startswith(full_prefix_dot):
+                    remaining = env_key_upper[len(full_prefix_dot) :]
+                # 尝试剥离前缀后的点号匹配 (DOUBAO.API_KEY)
+                elif env_key_upper.startswith(prefix_dot):
                     remaining = env_key_upper[len(prefix_dot) :]
-                # 尝试下划线前缀匹配 (WECOM_RPA_FORM_URL)
+                # 尝试下划线前缀匹配 (DOUBAO_API_KEY)
                 elif env_key_upper.startswith(prefix_under):
-                    # 将后面的下划线尝试转回点号层级以应用到字典
-                    # 这里是一个折中，主要为了兼顾在字典装配时使用旧式环境变量
                     remaining = env_key_upper[len(prefix_under) :].replace("_", ".")
 
                 if remaining:
