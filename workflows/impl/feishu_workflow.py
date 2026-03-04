@@ -109,7 +109,11 @@ class FeishuWorkflow(BaseWorkflow):
         使用配置指定的模型进行总结
         """
         platform_config = config.get_platform(self.WORKFLOW_NAME)
-        provider_key = platform_config.get("ai_model", "doubao")
+        provider_key = platform_config.get("ai_model")
+
+        if not provider_key:
+            logger.error(f"[{self.WORKFLOW_NAME}] 未配置 AI 模型 (ai_model)。")
+            return "总结失败: 未配置 AI 模型"
 
         # 获取模型详情
         model_cfg = config.get_model(provider_key)

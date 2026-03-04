@@ -24,7 +24,7 @@ class GitlabCrawler(BaseCrawler):
         """
         获取 GitLab 的实体（项目仓库）配置列表
         """
-        return getattr(config, "GITLAB_CRAWLER_SOURCES", [])
+        return getattr(config, "GITLAB_REPOS", [])
 
     async def fetch_activities(
         self, entity_config: dict, since: str, until: str

@@ -1,6 +1,7 @@
 import os
 import yaml
 import json
+import copy
 from typing import Any
 from loguru import logger
 from dotenv import load_dotenv
@@ -12,6 +13,9 @@ class Config:
     项目配置类，负责从环境变量和 YAML 文件中读取配置项。
     初始化逻辑在构造函数中自动执行。
     """
+
+    # 映射环境变量时自动忽略的顶层 YAML 键名
+    IGNORE_CATEGORY_KEYS = ["platforms", "models", "crawler_sources"]
 
     def __init__(self):
         """
@@ -85,35 +89,45 @@ class Config:
     def generate_dynamic_attributes(self):
         """
         基于 YAML 自动生成类实例的属性，支持环境覆盖。
+        同时会扫描环境变量中未在 YAML 中声明的独立配置 (例如 _CRAWLER_SOURCES)。
         """
+        # 第一阶段：基于 YAML 配置树生成属性
         for path, yaml_value in self.iter_yaml_paths("", self._yaml_config):
-            # 特殊处理 crawler_sources.gitlab.repos
-            if path == "crawler_sources.gitlab.repos":
-                env_raw = os.getenv("GITLAB_CRAWLER_SOURCES")
-                if env_raw:
-                    self.GITLAB_CRAWLER_SOURCES = self.parse_gitlab_crawler_sources(
-                        env_raw
-                    )
+            attr_name = self.path_to_attr_name(path)
+
+            # 使用更强大的 get 方法统一获取合并后的值 (它自带了环境变量探测逻辑)
+            # 但对于普通叶子节点，这里可以简化处理，因为 get 也需要在树上寻找。
+            # 不过最稳妥的是：统一调用 _get_value_for_attr(path, attr_name, yaml_value)
+
+            env_key = self.path_to_env_key(path)
+            env_val = os.getenv(env_key)
+
+            # 特别兼容传统下划线命名 (例如 GITLAB_CRAWLER_SOURCES)
+            if env_val is None:
+                env_val = os.getenv(attr_name)
+
+            # 特殊处理 crawler_sources 中的列表解析 (统一点号规范)
+            if "crawler_sources" in path and path.endswith(".repos"):
+                if env_val:
+                    setattr(self, attr_name, self.parse_gitlab_crawler_sources(env_val))
                 else:
-                    self.GITLAB_CRAWLER_SOURCES = yaml_value or []
+                    setattr(self, attr_name, yaml_value or [])
                 continue
 
-            attr_name = self.path_to_env_key(path)
-            env_val = os.getenv(attr_name)
             if env_val is not None:
-                # 识别并解析环境变量
-                final_value = env_val
-                if isinstance(env_val, str):
-                    env_val_strip = env_val.strip()
-                    # 仅支持 JSON 解析 (必须以 { 或 [ 开头)
-                    if env_val_strip.startswith(("{", "[")):
-                        try:
-                            final_value = json.loads(env_val_strip)
-                        except Exception:
-                            pass
+                final_value = self._parse_env_value(env_val)
             else:
                 final_value = yaml_value
             setattr(self, attr_name, final_value)
+
+        # 第二阶段：补漏扫描纯环境变量配置
+        # 针对在 .env 中配了，但在 yaml 里没写的平台源
+        for env_k, env_v in os.environ.items():
+            env_k_upper = env_k.upper()
+            if env_k_upper.endswith("_REPOS"):
+                # 如果这个属性还没被设置过，基于环境变量为其创建
+                if not hasattr(self, env_k_upper):
+                    setattr(self, env_k_upper, self.parse_gitlab_crawler_sources(env_v))
 
     def iter_yaml_paths(self, prefix, data):
         """
@@ -127,14 +141,25 @@ class Config:
             if prefix:
                 yield prefix, data
 
-    @staticmethod
-    def path_to_env_key(path: str) -> str:
+    @classmethod
+    def path_to_env_key(cls, path: str) -> str:
         """
         路径转环境变量名。
         """
-        _CATEGORY_KEYS = {"platforms", "models", "crawler_sources"}
         parts = path.split(".")
-        if len(parts) > 1 and parts[0] in _CATEGORY_KEYS:
+        if len(parts) > 1 and parts[0] in cls.IGNORE_CATEGORY_KEYS:
+            parts = parts[1:]
+
+        return ".".join(parts).upper()
+
+    @classmethod
+    def path_to_attr_name(cls, path: str) -> str:
+        """
+        路径转 Python 属性名 (使用下划线)。
+        """
+        parts = path.split(".")
+
+        if len(parts) > 1 and parts[0] in cls.IGNORE_CATEGORY_KEYS:
             parts = parts[1:]
 
         return "_".join(parts).upper()
@@ -156,14 +181,6 @@ class Config:
                 repos.append({"path": item, "branch": "master"})
         return repos
 
-    def get_merged_config(self, category: str, name: str) -> dict:
-        """
-        核心合并逻辑 (现已完全复用 get() 方法的链式取值与环境变量合并机制)。
-        """
-        path = f"{category}.{name}"
-        res = self.get(path, default={})
-        return res if isinstance(res, dict) else {}
-
     def get_crawler_source_platforms(self) -> list:
         """
         获取配置的所有采集源平台名称。
@@ -172,11 +189,19 @@ class Config:
         platforms = set(sources_cfg.keys()) if isinstance(sources_cfg, dict) else set()
 
         for env_key in os.environ.keys():
-            if env_key.endswith("_CRAWLER_SOURCES"):
-                platform_name = env_key.replace("_CRAWLER_SOURCES", "").lower()
+            if env_key.endswith("_REPOS"):
+                platform_name = env_key.replace("_REPOS", "").lower()
                 platforms.add(platform_name)
 
         return sorted(list(platforms))
+
+    def get_merged_config(self, category: str, name: str) -> dict:
+        """
+        核心合并逻辑 (现已完全复用 get() 方法的链式取值与环境变量合并机制)。
+        """
+        path = f"{category}.{name}"
+        res = self.get(path, default={})
+        return res if isinstance(res, dict) else {}
 
     def get_platform(self, platform_name: str) -> dict:
         """
@@ -193,20 +218,14 @@ class Config:
     def get(self, path: str, default: Any = None) -> Any:
         """
         按路径 (基于 . 分隔) 动态获取 YAML 配置，并用环境变量覆盖 (若存在)。
-        示例：get("redis.host") 或 get("platforms.feishu.bot_token")
+        支持 .properties 风格的点号分隔环境变量，例如 WECOM.RPA.FORM_URL
         """
-        # 第一步：查看是否被单项环境变量/动态属性作为基础标量完全覆盖
-        env_attr = self.path_to_env_key(path)
-        if hasattr(self, env_attr):
-            val = getattr(self, env_attr)
-            if not isinstance(val, dict):
-                return val
-
-        # 第二步：在字典树中深层查询基础配置
+        # 1. 寻找配置路径的基准值并规范化路径
         keys = path.split(".")
         current = self._yaml_config
-
         found = True
+        normalized_keys = keys
+
         for key in keys:
             if isinstance(current, dict) and key in current:
                 current = current[key]
@@ -214,11 +233,8 @@ class Config:
                 found = False
                 break
 
-        # 如果没找到，尝试补全前缀逻辑 (免前缀寻址)
         if not found:
-            _CATEGORY_KEYS = ["platforms", "models", "crawler_sources"]
-            for cat in _CATEGORY_KEYS:
-                # 尝试补全分类前缀，例如 "wecom" -> "platforms.wecom"
+            for cat in self.IGNORE_CATEGORY_KEYS:
                 temp_keys = [cat] + keys
                 current = self._yaml_config
                 found_cat = True
@@ -230,34 +246,97 @@ class Config:
                         break
                 if found_cat:
                     found = True
+                    normalized_keys = temp_keys
                     break
 
         base_val = current if found else default
 
-        # 第三步：如果查出来的是字典，还需要进行类似 get_merged_config 的环境变量前缀覆盖探测
-        if isinstance(base_val, dict):
-            # 将基准字典深层拷贝防止污染原 yaml
-            data = base_val.copy()
-            # 环境变量前缀格式处理，如 path="models.doubao" 时对应的前缀为 "DOUBAO_"
-            # 如果 path 长于 1，则以前最后一段为前缀进行探测比较贴合项目现存设定。
-            last_key = keys[-1]
-            prefix = f"{last_key.upper()}_"
+        # 2. 构造环境变量对应的名（剥离分类前缀）
+        # path="wecom" -> env_base_key="WECOM"
+        # path="wecom.rpa" -> env_base_key="WECOM.RPA"
+        env_base_key = self.path_to_env_key(".".join(normalized_keys))
+        attr_name_key = self.path_to_attr_name(".".join(normalized_keys))
+
+        # 3. 环境变量优先级最高：精确匹配 (不区分大小写)
+        for env_key, env_val in os.environ.items():
+            env_k_up = env_key.upper()
+            if env_k_up == env_base_key or env_k_up == attr_name_key.upper():
+                return self._parse_env_value(env_val)
+
+        # 4. 如果基础值是字典，或者基础值不存在但环境中有前缀匹配项（支持动态注入整个字典分支）
+        prefix_dot = f"{env_base_key}."
+        prefix_under = f"{attr_name_key}_"
+
+        has_env_prefix = any(
+            k.upper().startswith(prefix_dot) or k.upper().startswith(prefix_under)
+            for k in os.environ.keys()
+        )
+
+        if isinstance(base_val, dict) or (base_val is None and has_env_prefix):
+            data = copy.deepcopy(base_val) if isinstance(base_val, dict) else {}
+
+            # 扫描所有环境变量进行合并
             for env_key, env_val in os.environ.items():
-                if env_key.startswith(prefix):
-                    config_key = env_key[len(prefix) :].lower()
-                    final_val = env_val
-                    if isinstance(env_val, str) and (
-                        env_val.strip().startswith("{")
-                        or env_val.strip().startswith("[")
-                    ):
-                        try:
-                            final_val = json.loads(env_val)
-                        except:
-                            pass
-                    data[config_key] = final_val
+                env_key_upper = env_key.upper()
+                remaining = ""
+                # 尝试点号前缀匹配 (WECOM.RPA.FORM_URL)
+                if env_key_upper.startswith(prefix_dot):
+                    remaining = env_key_upper[len(prefix_dot) :]
+                # 尝试下划线前缀匹配 (WECOM_RPA_FORM_URL)
+                elif env_key_upper.startswith(prefix_under):
+                    # 将后面的下划线尝试转回点号层级以应用到字典
+                    # 这里是一个折中，主要为了兼顾在字典装配时使用旧式环境变量
+                    remaining = env_key_upper[len(prefix_under) :].replace("_", ".")
+
+                if remaining:
+                    self._inject_env_value(data, remaining, env_val)
             return data
 
         return base_val
+
+    def _inject_env_value(self, data: dict, env_path: str, value: Any):
+        """
+        递归注入环境变量值。env_path 是大写的点号路径。
+        """
+        parts = env_path.split(".")
+
+        # 优先匹配现有键名 (不区分大小写)
+        current_data_keys = {k.upper(): k for k in data.keys()}
+
+        # 尝试匹配现有键 (贪婪匹配)
+        for i in range(len(parts), 0, -1):
+            key_upper = ".".join(parts[:i])
+            if key_upper in current_data_keys:
+                actual_key = current_data_keys[key_upper]
+                if i == len(parts):
+                    # 叶子节点
+                    data[actual_key] = self._parse_env_value(value)
+                    return
+                elif isinstance(data[actual_key], dict):
+                    # 中间层
+                    self._inject_env_value(data[actual_key], ".".join(parts[i:]), value)
+                    return
+
+        # 兜底：创建新路径
+        target = data
+        for pk in parts[:-1]:
+            pk_lower = pk.lower()
+            if pk_lower not in target or not isinstance(target[pk_lower], dict):
+                target[pk_lower] = {}
+            target = target[pk_lower]
+        target[parts[-1].lower()] = self._parse_env_value(value)
+
+    @staticmethod
+    def _parse_env_value(val: Any) -> Any:
+        """尝试自动解析 JSON 字符串（数组或对象）"""
+        if isinstance(val, str):
+            val_s = val.strip()
+            if val_s.startswith(("{", "[")):
+                try:
+                    return json.loads(val_s)
+                except:
+                    pass
+        return val
 
 
 # 导出全局单例配置对象，实例化时会自动触发初始化

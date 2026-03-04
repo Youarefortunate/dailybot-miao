@@ -25,10 +25,17 @@ class WeComWorkflow(BaseWorkflow):
         执行 AI 总结逻辑
         """
         platform_config = config.get_platform(self.WORKFLOW_NAME)
-        provider_name = platform_config.get("ai_model", "doubao")
+        provider_name = platform_config.get("ai_model")
+
+        if not provider_name:
+            logger.error(f"[{self.WORKFLOW_NAME}] 未配置 AI 模型 (ai_model)。")
+            return "总结失败: 未配置 AI 模型"
 
         ai_instance = AIFactory.get_ai(provider_name)
         if not ai_instance:
+            logger.error(
+                f"[{self.WORKFLOW_NAME}] 未找到相关 AI 模型实现: {provider_name}"
+            )
             return "总结失败"
 
         return await ai_instance.summarize(raw_report, extra_prompts=extra_prompts)
