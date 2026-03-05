@@ -277,13 +277,13 @@ git push github
    git config remote.github.push master:main
    
    # 配置一键同步别名 (真正的一键全量)
-   git config alias.push-all "!git push gitee && git push github"
+   git config alias.all "!git push gitee && git push github"
    ```
 3. **验证配置**：
    ```bash
    git remote -v
    # 尝试一键推送
-   git push-all
+   git all
    ```
    *配置成功后，gitee 对应 master，github 对应 main，且 push-all 别名可一次性完成同步。*
 
