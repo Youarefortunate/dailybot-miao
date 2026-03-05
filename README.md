@@ -262,7 +262,8 @@ git push github
 
 如果您需要为新环境配置多仓库协同流程，请参考以下步骤：
 
-1. **统一分支名称**（推荐使用 `main`）：
+1. **统一分支名称**（推荐使用 `main`），此步骤会强制所有仓库平台都有一个分支`main`：
+   
    ```bash
    git branch -M main
    ```
@@ -285,7 +286,7 @@ git push github
    # 尝试一键推送
    git all
    ```
-   *配置成功后，gitee 对应 master，github 对应 main，且 push-all 别名可一次性完成同步。*
+   *配置成功后，gitee 对应 master，github 对应 main，且 all 别名可一次性完成同步。*
 
 ---
 
@@ -716,5 +717,7 @@ redis:                                 # 可选：配置后用于存储 OAuth To
   database: 0
 ```
 
+## 特别感谢
 
-
+- 感谢 [GitCode](https://gitcode.com/) 官方的 [G-Star](https://gitcode.com/g-star) 认证
+  ![](https://foruda.gitee.com/images/1728577513089814203/95f2a70d_716974.jpeg)
