@@ -233,6 +233,66 @@ pyinstaller scripts/DailyBot.spec --clean --noconfirm
 
 ---
 
+## 📡 Git 多远程仓库同步
+
+本项目支持在 Gitee 和 GitHub 上同步维护。为了保持一致性，已将主分支规范化为 `main`。
+
+### 1. 远程仓库配置
+- **gitee**: 仅指向 Gitee 仓库。
+- **github**: 仅指向 GitHub 仓库 (镜像/备份)。
+- **all**: 同时指向 Gitee 和 GitHub，用于一键同步。
+
+### 2. 如何推送？
+
+项目已根据您的需求区分了独立推送与全量推送：
+
+```bash
+# ✅ 一键推送到所有平台
+git push all
+# 指定分支
+git push all main
+
+# 🟢 仅推送到 Gitee
+git push gitee
+
+# 🔵 仅推送到 GitHub
+git push github
+```
+
+> **💡 高阶技巧**：建议运行 `git config --global push.default current`。 
+> 设置后，Git 会自动将当前分支推送到远程同名分支，您无需每次都输入 `main`！
+
+> **提示**：GitHub 远程已配置 Personal Access Token (PAT)，推送时无需再次输入密码。
+
+### 3. 如何配置？
+
+如果您需要为新环境配置多仓库协同流程，请参考以下步骤：
+
+1. **统一分支名称**（推荐使用 `main`）：
+   ```bash
+   git branch -M main
+   ```
+2. **配置各个远程仓库**：
+   ```bash
+   # 配置 Gitee (单平台)
+   git remote add gitee https://gitee.com/youarefortunate/daily-bot.git
+   
+   # 配置 GitHub (单平台，带 Token)
+   git remote add github https://<YOUR_TOKEN>@github.com/Youarefortunate/dailybot-miao.git
+   
+   # 配置 All (多平台一键推送)
+   git remote add all https://gitee.com/youarefortunate/daily-bot.git
+   git remote set-url --add --push all https://gitee.com/youarefortunate/daily-bot.git
+   git remote set-url --add --push all https://<YOUR_TOKEN>@github.com/Youarefortunate/dailybot-miao.git
+   ```
+3. **验证配置**：
+   ```bash
+   git remote -v
+   ```
+   *配置成功后，all 远程在 push 列表中将同时显示两个平台的 URL。*
+
+---
+
 ## 🚀 极简上手指南
 
 ### 环境准备
