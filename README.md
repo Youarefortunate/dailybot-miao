@@ -238,31 +238,25 @@ pyinstaller scripts/DailyBot.spec --clean --noconfirm
 本项目支持在 Gitee 和 GitHub 上同步维护。为了保持一致性，已将主分支规范化为 `main`。
 
 ### 1. 远程仓库配置
-- **gitee**: 仅指向 Gitee 仓库。
-- **github**: 仅指向 GitHub 仓库 (镜像/备份)。
-- **all**: 同时指向 Gitee 和 GitHub，用于一键同步。
+- **gitee**: 指向 Gitee 仓库，对应分支为 `master` (默认/主流)。
+- **github**: 指向 GitHub 仓库，对应分支为 `main` (默认/现代)。
 
 ### 2. 如何推送？
 
-项目已根据您的需求区分了独立推送与全量推送：
+由于 Gitee 和 GitHub 分支名称不同，我们已通过 Git 配置实现了**智能自动映射**。您在 `master` 分支下直接运行即可：
 
 ```bash
-# ✅ 一键推送到所有平台
-git push all
-# 指定分支
-git push all main
+# ✅ 一键推送到所有平台 (Gitee master + GitHub main)
+git push-all
 
-# 🟢 仅推送到 Gitee
+# � 仅推送到 Gitee (自动对齐 master)
 git push gitee
 
-# 🔵 仅推送到 GitHub
+# 🔵 仅推送到 GitHub (自动对齐 main)
 git push github
 ```
 
-> **💡 高阶技巧**：建议运行 `git config --global push.default current`。 
-> 设置后，Git 会自动将当前分支推送到远程同名分支，您无需每次都输入 `main`！
-
-> **提示**：GitHub 远程已配置 Personal Access Token (PAT)，推送时无需再次输入密码。
+> **💡 高阶技巧**：我们保留了 `all` 远程作为“万能地址”，但由于 GitHub 对账号密码认证的限制，建议首选上述已配置 Token 的 `gitee` 和 `github` 独立推送。
 
 ### 3. 如何配置？
 
@@ -274,22 +268,24 @@ git push github
    ```
 2. **配置各个远程仓库**：
    ```bash
-   # 配置 Gitee (单平台)
+   # 配置 Gitee (master)
    git remote add gitee https://gitee.com/youarefortunate/daily-bot.git
+   git config remote.gitee.push master:master
    
-   # 配置 GitHub (单平台，带 Token)
+   # 配置 GitHub (main，带 Token)
    git remote add github https://<YOUR_TOKEN>@github.com/Youarefortunate/dailybot-miao.git
+   git config remote.github.push master:main
    
-   # 配置 All (多平台一键推送)
-   git remote add all https://gitee.com/youarefortunate/daily-bot.git
-   git remote set-url --add --push all https://gitee.com/youarefortunate/daily-bot.git
-   git remote set-url --add --push all https://<YOUR_TOKEN>@github.com/Youarefortunate/dailybot-miao.git
+   # 配置一键同步别名 (真正的一键全量)
+   git config alias.push-all "!git push gitee && git push github"
    ```
 3. **验证配置**：
    ```bash
    git remote -v
+   # 尝试一键推送
+   git push-all
    ```
-   *配置成功后，all 远程在 push 列表中将同时显示两个平台的 URL。*
+   *配置成功后，gitee 对应 master，github 对应 main，且 push-all 别名可一次性完成同步。*
 
 ---
 
