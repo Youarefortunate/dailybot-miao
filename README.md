@@ -52,34 +52,14 @@
 
 ---
 
-## 🏗️ Fix(有bug): 极致打包与分发 (EXE)
-
-日报喵支持**单体 EXE 极致分发方案**：
-
-### 1. 傻瓜式运行
-- **免安装环境**：生成的 `DailyBot.exe` 可以在未部署 Python 的环境下直接运行。
-- **自动初始化**：程序内置浏览器环境自检。如果开启了 RPA 填报但缺少驱动，**程序会在首次启动时自动通过后台下载安装 Chromium**，实现真正的“开箱即用”。
-
-### 2. 如何打包？
-如果您进行了二次开发，可以运行以下命令重新生成执行文件：
-```bash
-# 安装打包依赖
-pip install pyinstaller
-
-# 执行一键打包逻辑 (配置文件已整理至 scripts 目录)
-pyinstaller scripts/DailyBot.spec --clean --noconfirm
-```
-成品将生成在 `dist/` 目录下，包含 `DailyBot.exe` 及必需的配置模板。
-
----
-
 ## 🏗️ 技术架构全景图
 
 ```mermaid
 graph TD
     subgraph "0. 外部接入 (Access Layer)"
         CL[Antigravity / OpenClaw接入MCP后] -->|MCP Protocol| MCP_S[MCP Server]
-        USER[用户双击 DailyBot.bat] -->|手动运行| SCHEDULER
+        USER[用户双击 DailyBot.bat] -->|脚本运行| SCHEDULER
+        EXE_USER[用户双击 DailyBot.exe] -->|单体运行| SCHEDULER
         WIN_STARTUP[Windows 开机自启] -->|自动运行| SCHEDULER
         MCP_S -->|Trigger| START
     end
@@ -137,10 +117,18 @@ graph TD
         PW --> SUBMIT[自动打开表单 & 模拟点击提交]
     end
 
-    style START fill:#f9f,stroke:#333,stroke-width:2px
-    style SUBMIT fill:#00ff00,stroke:#333
-    style MCP_S fill:#3399ff,stroke:#fff,color:#fff
-    style SCHEDULER fill:#ffcc00,stroke:#333
+    subgraph "8. 打包与分发 (Build & Distribution)"
+        B_USER[用户双击 build.bat] -->|一键触发| B_CORE[build.bat 逻辑]
+        B_CORE -->|依赖检测| B_DEP[自动安装 pyinstaller]
+        B_CORE -->|PyInstaller| B_EXE[编译 EXE]
+        B_EXE -->|产物| B_DIST[dist/DailyBot.exe]
+        B_DIST -.->|最终用户执行| EXE_USER
+    end
+
+    style START fill:#6366f1,stroke:#4f46e5,color:#fff,stroke-width:2px
+    style SUBMIT fill:#10b981,stroke:#059669,color:#fff
+    style MCP_S fill:#3b82f6,stroke:#2563eb,color:#fff
+    style SCHEDULER fill:#f59e0b,stroke:#d97706,color:#fff
 ```
 ## 📂 项目结构解析
 
@@ -162,7 +150,35 @@ DailyBot/
 
 ---
 
-## ⏰ TODO(待验证): 自启动与后台运行 (Windows)
+## 🏗️ 极致打包与分发 (EXE)
+
+日报喵支持**单体 EXE 极致分发方案**：
+
+### 1. 傻瓜式运行
+- **免安装环境**：生成的 `DailyBot.exe` 可以在未部署 Python 的环境下直接运行。
+- **自动初始化**：程序内置浏览器环境自检。如果开启了 RPA 填报但缺少驱动，**程序会在首次启动时自动通过后台下载安装 Chromium**，实现真正的“开箱即用”。
+
+### 2. 如何打包？
+如果您进行了二次开发，可以直接双击运行一键打包脚本：
+
+**Windows 一键打包 (推荐)**:
+- **操作**: 直接双击 `scripts/build.bat`。
+- **功能**: 
+    - 自动激活虚拟环境。
+    - 自动检测并安装 PyInstaller（若缺失，执行 `pip install -r requirements.txt`）。
+    - 默认保留 `build` 目录以便调试；若需清理，可在终端运行 `scripts/build.bat --clean`。
+    - 生成完成后，成品将位于 `dist/` 目录。
+
+**手动打包指令**:
+```bash
+# 执行一键打包逻辑 (配置文件已整理至 scripts 目录)
+pyinstaller scripts/DailyBot.spec --clean --noconfirm
+```
+成品将生成在 `dist/` 目录下，包含 `DailyBot.exe` 及必需的配置模板。
+
+---
+
+## ⏰ 自启动与后台运行 (Windows)
 
 日报喵针对 Windows 用户提供了**极致简化**的自启动与后台运行方案，确保你的日报任务在开机后自动、静和准时地执行。
 
