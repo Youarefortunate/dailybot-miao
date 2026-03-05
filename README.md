@@ -47,8 +47,8 @@
 - **大师级变脸**：内置“性质反转”润色算法。AI 会智能将历史上的“新增功能”重构为当前的“优化、重构或修复”，使日报产出在任务空窗期依然保持高专业度。
 
 ### 6. 🔌 MCP 协议原生适配
-- **即插即用**：基于 `fastmcp` 实现，支持作为 MCP Server 接入 OpenClaw、Claude Desktop 等 AI 客户端。
-- **能力暴露**：直接在对话框中通过自然语言触发“运行日报”、“查询工作流”、“查看配置”等指令，实现真正的“对话式办公”。
+- **即插即用（mcp）**：基于 `fastmcp` 实现，支持作为 MCP Server 接入 OpenClaw、Claude Desktop 等 AI 客户端。
+- **能力暴露（skill function calling）**：直接在对话框中通过自然语言触发“运行日报”、“查询工作流”、“查看配置”等指令，实现真正的“对话式办公”。
 
 ---
 
@@ -56,15 +56,25 @@
 
 ```mermaid
 graph TD
-    subgraph "0. 外部接入 (Access Layer)"
-        CL[Antigravity / OpenClaw接入MCP后] -->|MCP Protocol| MCP_S[MCP Server]
+    subgraph ACCESS ["<span style='color:black;font-weight:bold'>0. 外部接入 (Access Layer)</span>"]
+        USER_TALK[用户自然语言对话] --> CL[Agent: OpenClaw / Claude Code ....]
+        
+        subgraph "AI 增强平台 (AI Empowerment)"
+            SKILL[DailyBot Skill<br/>SOP & Guidance]
+            MCP_S[MCP Server<br/>Tools & Execution]
+        end
+
+        CL <-->|Matching & Thinking| SKILL
+        CL <-->|Invoke & Control| MCP_S
+        
         USER[用户双击 DailyBot.bat] -->|脚本运行| SCHEDULER
         EXE_USER[用户双击 DailyBot.exe] -->|单体运行| SCHEDULER
         WIN_STARTUP[Windows 开机自启] -->|自动运行| SCHEDULER
-        MCP_S -->|Trigger| START
+        
+        MCP_S -->|Execution Trigger| START
     end
 
-    subgraph "6. 定时与守护进程 (Scheduler & Autostart)"
+    subgraph SCHED_SUB ["<span style='color:black;font-weight:bold'>1. 定时与守护进程 (Scheduler Layer)</span>"]
         CONFIG_S[加载 scheduler 配置] --> SCHEDULER[push_scheduler.py]
         SCHEDULER --> LOCK[单例检测 & 进程锁]
         LOCK -->|检测到旧进程| KILL[自动清除旧实例]
@@ -73,21 +83,20 @@ graph TD
         SERVICE -->|基于 tasks/default_time 触发| START
     end
 
-    subgraph "1. 环境自检 (System Checker)"
+    subgraph CHECKER ["<span style='color:black;font-weight:bold'>2. 环境自检 (System Checker)</span>"]
         START[程序启动] --> ENV[Playwright 驱动检测]
         ENV -->|未就绪| INSTALL[自动补全 Chromium]
         ENV & INSTALL --> OAUTH_CHECK{各平台 OAuth 授权检测}
     end
 
-    %% 横向布局：OAuth 流程放在右侧以节省垂直空间
-    subgraph "7. OAuth 流程 (以飞书为例)"
+    subgraph OAUTH_SUB ["<span style='color:black;font-weight:bold'>3. OAuth 流程 (Auth Layer)</span>"]
         OAUTH_CHECK -->|检出过期| FS_CHECK[飞书 Token 有效性校验]
         FS_CHECK -->|过期且可刷新| FS_REFRESH[飞书 无感刷新 Refresh Token]
         FS_REFRESH -->|刷新失败 / 无凭据| FS_CARD[发送飞书单聊授权卡片]
         FS_CARD -->|用户点击卡片授权| FS_SUCCESS[更新凭据 & 自动重试工作流]
     end
 
-    subgraph "2. 智能采集 (Crawlers) & 伪装补全"
+    subgraph CRAWLERS ["<span style='color:black;font-weight:bold'>4. 智能采集 (Crawlers Layer)</span>"]
         OAUTH_CHECK -->|授权通过| C_FACTORY[Crawler Factory]
         FS_CHECK & FS_REFRESH & FS_SUCCESS -->|授权通过| C_FACTORY
         C_FACTORY -->|异步并行| GL["GitLab (Async)"]
@@ -97,7 +106,7 @@ graph TD
         CAMOUFLAGE -->|提取 lookback 历史并标记使用| MERGE_DATA[填充后的待总结报文]
     end
 
-    subgraph "3. 智脑中心 (Providers)"
+    subgraph PROVIDERS ["<span style='color:black;font-weight:bold'>5. 智脑中心 (Providers Layer)</span>"]
         MERGE_DATA -->|去重合并请求| AI_FACTORY[AI Factory]
         AI_FACTORY -->|Doubao| DB[豆包 Pro]
         AI_FACTORY -->|DeepSeek| DS[Claude Code 4.6]
@@ -105,19 +114,19 @@ graph TD
         DB & DS & GM --> SUMMARY[AI 生成总结内容]
     end
 
-    subgraph "4. 推送工作流 (Workflows)"
+    subgraph WORKFLOWS ["<span style='color:black;font-weight:bold'>6. 推送工作流 (Workflows Layer)</span>"]
         SUMMARY --> WF_FACTORY[Workflow Factory]
         WF_FACTORY --> FS[飞书卡片推送]
         WF_FACTORY --> WC[企业微信推送]
     end
 
-    subgraph "5. 自动化填报 (RPA Executor)"
+    subgraph RPA_SUB ["<span style='color:black;font-weight:bold'>7. 自动化填报 (RPA Layer)</span>"]
         FS & WC --> RPA_FACTORY[RPA Factory]
         RPA_FACTORY -->|驱动| PW[Playwright Engine]
         PW --> SUBMIT[自动打开表单 & 模拟点击提交]
     end
 
-    subgraph "8. 打包与分发 (Build & Distribution)"
+    subgraph BUILD_FLOW ["<span style='color:black;font-weight:bold'>8. 打包与分发 (Build Layer)</span>"]
         B_USER[用户双击 build.bat] -->|一键触发| B_CORE[build.bat 逻辑]
         B_CORE -->|依赖检测| B_DEP[自动安装 pyinstaller]
         B_CORE -->|PyInstaller| B_EXE[编译 EXE]
@@ -125,16 +134,31 @@ graph TD
         B_DIST -.->|最终用户执行| EXE_USER
     end
 
-    style START fill:#6366f1,stroke:#4f46e5,color:#fff,stroke-width:2px
-    style SUBMIT fill:#10b981,stroke:#059669,color:#fff
-    style MCP_S fill:#3b82f6,stroke:#2563eb,color:#fff
-    style SCHEDULER fill:#f59e0b,stroke:#d97706,color:#fff
+    %% 节点样式定义
+    classDef mainFlow fill:#6366f1,stroke:#4f46e5,color:#fff,stroke-width:2px;
+    classDef actionNode fill:#10b981,stroke:#059669,color:#fff;
+    classDef toolNode fill:#3b82f6,stroke:#2563eb,color:#fff;
+    classDef logicNode fill:#f59e0b,stroke:#d97706,color:#fff;
+    classDef skillNode fill:#8b5cf6,stroke:#7c3aed,color:#fff;
+    classDef buildNode fill:#1e293b,stroke:#0f172a,color:#fff,font-weight:bold;
+    classDef secondaryNode fill:#64748b,stroke:#475569,color:#fff;
+
+    %% 应用样式
+    class START mainFlow;
+    class SUBMIT actionNode;
+    class MCP_S toolNode;
+    class SCHEDULER logicNode;
+    class SKILL skillNode;
+    class B_USER,B_CORE,B_DEP,B_EXE,B_DIST buildNode;
+    class USER_TALK,EXE_USER secondaryNode;
+
+    %% 子图样式
+    style BUILD_FLOW fill:#f8fafc,stroke:#cbd5e1,stroke-dasharray: 5 5,color:#0f172a;
 ```
 ## 📂 项目结构解析
 
 ```text
 DailyBot/
-├── mcp_server/          # 🔌 MCP 适配：支持全自动接入 Cursor / Antigravity / Claude Desktop
 ├── main.py              # 🚀 核心入口：控制全链路流转与浏览器自动环境初始化
 ├── push_scheduler.py    # ⏰ 守护进程：基于 Cron 规则的定时推送服务
 ├── config/              # ⚙️ 配置中心：config.yaml 静态配置存放
