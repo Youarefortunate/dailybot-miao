@@ -12,3 +12,4 @@ build/
 dist/
 camouflage_history.json
 .scheduler.lock
+extra_report.md
