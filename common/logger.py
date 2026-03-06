@@ -22,12 +22,13 @@ log_retention = log_cfg.get("retention", "7 days")
 # 移除 loguru 默认的 stderr handler
 logger.remove()
 
-# 添加控制台输出 handler
-logger.add(
-    sys.stdout,
-    level=log_level,
-    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level:<8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
-)
+# 添加控制台输出 handler (仅当 stdout 有效时)
+if sys.stdout is not None:
+    logger.add(
+        sys.stdout,
+        level=log_level,
+        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level:<8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+    )
 
 # 添加文件日志输出
 logger.add(

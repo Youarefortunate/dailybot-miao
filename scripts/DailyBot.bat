@@ -11,7 +11,7 @@ if not exist ".venv" (
 
 call .venv\Scripts\activate
 :: 使用 %* 将所有接收到的参数透传给 Python 脚本
-python push_scheduler.py %*
+python dailybot_scheduler.py %*
 
 if %ERRORLEVEL% neq 0 (
     if "%1"=="--service" (

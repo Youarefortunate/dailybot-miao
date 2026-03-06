@@ -75,10 +75,10 @@ graph TD
     end
 
     subgraph SCHED_SUB ["<span style='color:black;font-weight:bold'>1. 定时与守护进程 (Scheduler Layer)</span>"]
-        CONFIG_S[加载 scheduler 配置] --> SCHEDULER[push_scheduler.py]
+        CONFIG_S[加载 scheduler 配置] --> SCHEDULER[dailybot_scheduler.py]
         SCHEDULER --> LOCK[单例检测 & 进程锁]
         LOCK -->|检测到旧进程| KILL[自动清除旧实例]
-        KILL --> SERVICE[启动 APScheduler 调度服务]
+        KILL --> SERVICE[启动 轮询/任务 调度服务]
         LOCK -->|无运行实例| SERVICE
         SERVICE -->|基于 tasks/default_time 触发| START
     end
@@ -160,7 +160,7 @@ graph TD
 ```text
 DailyBot/
 ├── main.py              # 🚀 核心入口：控制全链路流转与浏览器自动环境初始化
-├── push_scheduler.py    # ⏰ 守护进程：基于 Cron 规则的定时推送服务
+├── dailybot_scheduler.py # ⏰ 守护进程：基于 Cron/轮询 规则的定时推送服务 (推荐入口)
 ├── config/              # ⚙️ 配置中心：config.yaml 静态配置存放
 ├── scripts/             # 🛠️ 运维脚本：PyInstaller 打包配置 (.spec) 与启动脚本
 ├── api/                 # 📡 接口定义：各平台声明式 API 映射
@@ -429,8 +429,8 @@ REDIS_PORT=6379
 # 手动单次运行
 python main.py
 
-# 生产环境常驻运行 (基于 Cron 调度)
-python push_scheduler.py
+# 生产环境常驻运行 (支持热重启)
+python dailybot_scheduler.py
 ```
 
 ---

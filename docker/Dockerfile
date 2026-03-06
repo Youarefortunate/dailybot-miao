@@ -34,5 +34,5 @@ COPY . .
 # 暴露 OAuth 回调端口
 EXPOSE 8001
 
-# TODO：目前push_scheduler是windows环境
-CMD ["python", "push_scheduler.py"]
+# TODO：目前 dailybot_scheduler 有 Windows 特性，Linux 下需适配
+CMD ["python", "dailybot_scheduler.py"]
