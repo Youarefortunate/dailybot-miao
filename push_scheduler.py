@@ -25,6 +25,25 @@ async def run_job():
         logger.error(f"[定时任务] 核心逻辑执行失败: {e}")
 
 
+async def run_extra_report_cleanup():
+    """执行额外报告的定时清理任务"""
+    from crawlers.modules.crawler_manager import crawler_manager
+
+    logger.info("[定时任务] 触发额外报告清理...")
+    try:
+        for crawler_name, crawler in crawler_manager._crawlers.items():
+            if not hasattr(crawler, "archive_extra_report"):
+                continue
+            try:
+                # 调用每个爬虫的归档方法
+                crawler.archive_extra_report()
+            except Exception as e:
+                logger.warning(f"📝 [额外报告] 平台 {crawler_name} 清理失败: {e}")
+        logger.info("[定时任务] 额外报告清理完毕。")
+    except Exception as e:
+        logger.error(f"[定时任务] 额外报告清理失败: {e}")
+
+
 def is_date_match(config_dates, target_date: datetime):
     """判断 target_date 是否在 config_dates 定义的范围内。如果未配置日期，则默认为每天都匹配。"""
     if not config_dates:
@@ -267,6 +286,29 @@ def setup_scheduler():
     scheduler = BlockingScheduler()
     tasks = scheduler_cfg.get("tasks", [])
     default_time = scheduler_cfg.get("default_time", "18:20")
+
+    # 4. 配置额外报告定时清理任务
+    from crawlers.modules.crawler_manager import crawler_manager
+
+    # 收集需要清理的时间点（每个爬虫可能有不同的清理时间）
+    for crawler_name, crawler in crawler_manager._crawlers.items():
+        if not hasattr(crawler, "archive_extra_report"):
+            continue
+
+        # 从爬虫配置中读取 cleanup_time，若未配置则使用 default_time
+        cleanup_time = crawler._extra_report.get("cleanup_time", default_time) if hasattr(crawler, "_extra_report") else default_time
+
+        # 避免重复添加相同时间的任务
+        if cleanup_time in cleanup_times:
+            continue
+        cleanup_times.add(cleanup_time)
+
+        h, m = map(int, cleanup_time.split(":"))
+        scheduler.add_job(
+            lambda ct=cleanup_time: asyncio.run(run_extra_report_cleanup()),
+            CronTrigger(hour=h, minute=m, second=0),
+        )
+        logger.info(f"📝 [额外报告] {crawler_name} 已配置定时清理任务: 每天 {cleanup_time}")
 
     def plan_today_jobs():
         now = datetime.now()

@@ -129,14 +129,26 @@ crawler_sources:
       max_items: 5 # 目标总条数：触发后，伪装记录数 = max_items - 真实采集数
       lookback_days: 14 # 回溯天数：寻找素材的范围
       cooldown_days: 10 # LRU 冷却天数：素材使用后的禁止期 (天)
+    # 额外信息补充（人工补充）
+    extra_report:
+      enabled: true
+      # 文件路径，支持绝对路径和相对路径（相对于项目根目录）
+      file_path: "extra_report.md"
+      # 日志保留天数
+      retention: 7
+      # 自动清理配置（采集完成后是否自动清空源文件）
+      auto_cleanup:
+        enabled: true # 采集完成后自动清空源文件
+        # 定时清理时间（与日报采集时间不同时使用定时清理）
+        cleanup_time: "24:00"
 
 # 启用的工作流，名称要和 platforms 中的 key 对应
-enabled_workflows: ["feishu"]
+enabled_workflows: ["wecom"]
 
 # 调度器配置 (Windows 本地定时触发配置)
 scheduler:
   enabled: true
-  auto_start: true # 开机自启
+  auto_start: true # 开机自启用
   # 兜底执行时间 (如果今日不符合任何 tasks 规则，或配置全过期)
   default_time: "18:20"
   tasks: # 指定特定时间运行

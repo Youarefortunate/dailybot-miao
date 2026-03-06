@@ -438,3 +438,46 @@ class BaseCrawler(ABC):
             )
 
         return final_selected
+
+    def get_extra_report_config(self) -> dict:
+        """
+        获取额外报告配置。子类可重写。
+        默认从 crawler_sources.{crawler_name}.extra_report 读取
+        """
+        cfg = config.get(f"crawler_sources.{self.CRAWLER_NAME}", {})
+        return cfg.get("extra_report", {})
+
+    async def fetch_extra_report(self) -> dict:
+        """
+        获取额外报告补充内容。子类可重写。
+        返回格式: {"extra_report": {"日期": [内容]}}
+        """
+        return {}
+
+    def generate_extra_report(self, activities_map: dict) -> tuple[str, int]:
+        """
+        生成额外报告的汇报文本。子类可重写。
+        """
+        if not activities_map:
+            return "", 0
+
+        total_count = 0
+        report_text = "\n  📝 [额外信息补充]\n"
+
+        for date_str, contents in activities_map.items():
+            if not contents:
+                continue
+
+            report_text += f"    📅 日期: {date_str}\n"
+            for content in contents:
+                for line in content.split("\n"):
+                    report_text += f"      {line}\n"
+                total_count += 1
+
+        return report_text, total_count
+
+    def archive_extra_report(self):
+        """
+        归档并清理额外报告文件。子类可重写。
+        """
+        pass

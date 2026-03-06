@@ -171,7 +171,32 @@ class CrawlerManager(BaseDynamicManager):
                 # 重新在头部插入全局标识（如果存在真实记录）
                 report_text = f"\n  📦 [今日真实工作]\n" + report_text
 
-        # 3. 第三步：如果任一平台触发了伪装，合并增强提示词
+        # 3. 第三步：采集各平台的额外报告（人工补充的 Markdown 文件）
+        for crawler_name in self._registry:
+            crawler_cls = self._registry[crawler_name]
+            # 延迟实例化
+            crawler_instance = crawler_cls()
+            # 检查爬虫是否实现了 extra_report 能力
+            if not hasattr(crawler_instance, "fetch_extra_report"):
+                continue
+
+            extra_result = await crawler_instance.fetch_extra_report()
+            if not extra_result:
+                continue
+
+            extra_text, extra_count = crawler_instance.generate_extra_report(
+                extra_result
+            )
+            if extra_text.strip():
+                report_text += extra_text
+                total_real_count += extra_count
+                # 采集后立即归档清理
+                crawler_instance.archive_extra_report()
+                logger.info(
+                    f"📝 [额外报告] 平台 {crawler_name} 已合并 {extra_count} 条额外补充内容"
+                )
+
+        # 4. 第四步：如果任一平台触发了伪装，合并增强提示词
         if has_camouflage_triggered:
             camou_prompts = prompts.get("camouflage", {})
             extra_system = camou_prompts.get("system")
