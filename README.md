@@ -174,7 +174,7 @@ DailyBot/
 
 ---
 
-## 🏗️ 极致打包与分发 (EXE)
+## 🏗️ Fix(有Bug): 极致打包与分发 (EXE)
 
 日报喵支持**单体 EXE 极致分发方案**：
 
@@ -202,7 +202,7 @@ pyinstaller scripts/DailyBot.spec --clean --noconfirm
 
 ---
 
-## ⏰ 自启动与后台运行 (Windows)
+## ⏰ Fix(有Bug): 自启动与后台运行 (Windows)
 
 日报喵针对 Windows 用户提供了**极致简化**的自启动与后台运行方案，确保你的日报任务在开机后自动、静和准时地执行。
 
@@ -509,7 +509,7 @@ python dailybot_scheduler.py
 
 ---
 
-## 🛠️ 配置文件手册
+## 🛠️ TODO(待完善v1): 配置文件手册
 
 日报喵支持高度灵活的配置，您可以根据需要通过外置的 `.env` 或 `config/config.yaml` 进行定义。
 
@@ -609,7 +609,7 @@ python dailybot_scheduler.py
 
 ---
 
-## 完整的 `config.yaml` 示例
+## TODO(待完善v1): 完整的 `config.yaml` 示例
 
 您可以参考以下模版在 `config/config.yaml` 中进行业务配置。**敏感信息建议通过 `.env` 注入，而不是直接写在这里。**
 
@@ -716,8 +716,3 @@ redis:                                 # 可选：配置后用于存储 OAuth To
   password: ""
   database: 0
 ```
-
-## 特别感谢
-
-- 感谢 [GitCode](https://gitcode.com/) 官方的 [G-Star](https://gitcode.com/g-star) 认证
-  ![](https://foruda.gitee.com/images/1728577513089814203/95f2a70d_716974.jpeg)
