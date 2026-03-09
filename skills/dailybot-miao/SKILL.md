@@ -1,16 +1,10 @@
-﻿---
+---
 name: dailybot-miao
-description: DailyBot 自动化日报系统。管理 GitLab commit 采集、AI 总结、飞书/企微推送及 RPA 自动填报。用于运行日报流水线、检查工作流状态、排查浏览器驱动或 OAuth 授权异常。
-metadata:
-  {
-    "openclaw":
-      {
-        "emoji": "🐱‍🐉",
-      },
-  }
+description: |
+  DailyBotMiao 自动化日报系统。管理 GitLab commit 采集、AI 总结、飞书/企微推送及 RPA 自动填报。用于运行日报流水线、检查工作流状态、排查浏览器驱动或 OAuth 授权异常。
 ---
 
-# DailyBot 自动化日报系统
+# DailyBotMiao 自动化日报系统
 
 ## 快速开始
 
