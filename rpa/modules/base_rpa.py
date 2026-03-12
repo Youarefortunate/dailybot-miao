@@ -101,11 +101,12 @@ class BaseRPA(ABC):
         launch_params = {
             "user_data_dir": user_data_dir,
             "headless": False,
-            "viewport": {"width": 1920, "height": 1080},
+            "viewport": None,  # 设置为 None 以允许浏览器窗口决定实际视口大小
+            "no_viewport": True,  # 禁用 Playwright 的默认固定视口缩放
             "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
             "args": [
                 "--start-maximized",
-                "--disable-blink-features=AutomationControlled",  # 关键：尝试隐藏自动化受控特征
+                "--disable-blink-features=AutomationControlled",  # 尝试隐藏自动化受控特征
             ],
             "ignore_default_args": ["--enable-automation"],  # 进一步隐藏
         }
