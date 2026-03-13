@@ -3,6 +3,7 @@ import yaml
 import json
 import copy
 from typing import Any
+import re
 from loguru import logger
 from dotenv import load_dotenv
 from utils.path_helper import get_resource_path, get_app_dir
@@ -89,53 +90,48 @@ class Config:
     def generate_dynamic_attributes(self):
         """
         基于 YAML 自动生成类实例的属性，支持环境覆盖。
-        同时会扫描环境变量中未在 YAML 中声明的独立配置 (例如 _CRAWLER_SOURCES)。
+        使用 get() 方法确保属性访问与 get() 方法得到的一致。
         """
         # 第一阶段：基于 YAML 配置树生成属性
         for path, yaml_value in self.iter_yaml_paths("", self._yaml_config):
             attr_name = self.path_to_attr_name(path)
 
-            # 使用更强大的 get 方法统一获取合并后的值 (它自带了环境变量探测逻辑)
-            # 但对于普通叶子节点，这里可以简化处理，因为 get 也需要在树上寻找。
-            # 不过最稳妥的是：统一调用 _get_value_for_attr(path, attr_name, yaml_value)
+            # 使用更强大的 get 方法统一获取合并后的值 (包含 Properties 风格数组解析)
+            final_value = self.get(path)
 
-            env_key = self.path_to_env_key(path)
-            full_env_key = path.upper()  # 不剥离前缀的完整路径
-            env_val = os.getenv(env_key)
-
-            # 兼容带前缀的环境变量和传统下划线命名
-            if env_val is None:
-                env_val = os.getenv(attr_name)
-            if env_val is None:
-                env_val = os.getenv(full_env_key)
-
-            # 特殊处理 crawler_sources 中的列表解析 (统一点号规范)
+            # 特殊处理 crawler_sources 中的列表解析 (兼容逗号分隔字符串)
             if "crawler_sources" in path and path.endswith(".repos"):
-                if env_val:
-                    setattr(self, attr_name, self.parse_gitlab_crawler_sources(env_val))
-                else:
-                    setattr(self, attr_name, yaml_value or [])
-                continue
+                if isinstance(final_value, str):
+                    final_value = self.parse_gitlab_crawler_sources(final_value)
 
-            if env_val is not None:
-                final_value = self._parse_env_value(env_val)
-            else:
-                final_value = yaml_value
             setattr(self, attr_name, final_value)
 
         # 第二阶段：补漏扫描纯环境变量配置
         # 针对在 .env 中配了，但在 yaml 里没写的平台源
         for env_k, env_v in os.environ.items():
             env_k_upper = env_k.upper()
-            if env_k_upper.endswith("_REPOS") or env_k_upper.endswith(".REPOS"):
-                attr_name = env_k_upper.replace(".", "_")
-                # 剥离分类前缀 (如 CRAWLER_SOURCES_)
-                for prefix in ["CRAWLER_SOURCES_"]:
-                    if attr_name.startswith(prefix):
-                        attr_name = attr_name[len(prefix) :]
-                        break
-                if not hasattr(self, attr_name):
-                    setattr(self, attr_name, self.parse_gitlab_crawler_sources(env_v))
+            if "REPOS" in env_k_upper:
+                # 兼容多种格式：CRAWLER_SOURCES.GITHUB.REPOS[0].PATH, GITHUB_REPOS 等
+                parts = env_k_upper.replace(".", "_").replace("[", "_").split("_")
+                platform_name = ""
+                try:
+                    # 寻找 REPOS 所在的索引位置
+                    for i, p in enumerate(parts):
+                        if p == "REPOS" and i > 0:
+                            prev_part = parts[i - 1]
+                            if prev_part not in ["SOURCES", "CRAWLER"]:
+                                platform_name = prev_part.lower()
+                                break
+                except:
+                    pass
+
+                if platform_name:
+                    attr_name = f"{platform_name.upper()}_REPOS"
+                    if not hasattr(self, attr_name):
+                        res = self.get(f"crawler_sources.{platform_name}.repos")
+                        if isinstance(res, str):
+                            res = self.parse_gitlab_crawler_sources(res)
+                        setattr(self, attr_name, res or [])
 
     def iter_yaml_paths(self, prefix, data):
         """
@@ -192,14 +188,26 @@ class Config:
     def get_crawler_source_platforms(self) -> list:
         """
         获取配置的所有采集源平台名称。
+        同步支持 YAML 定义和环境变量 (含 Properties 风格) 动态发现。
         """
         sources_cfg = self._yaml_config.get("crawler_sources", {})
         platforms = set(sources_cfg.keys()) if isinstance(sources_cfg, dict) else set()
 
+        # 扫描环境变量中的动态平台
         for env_key in os.environ.keys():
-            if env_key.endswith("_REPOS"):
-                platform_name = env_key.replace("_REPOS", "").lower()
-                platforms.add(platform_name)
+            env_key_upper = env_key.upper()
+            if "REPOS" in env_key_upper:
+                # 兼容多种格式：CRAWLER_SOURCES.GITHUB.REPOS[0].PATH, GITHUB_REPOS 等
+                parts = env_key_upper.replace(".", "_").replace("[", "_").split("_")
+                try:
+                    # 寻找 REPOS 所在的索引
+                    for i, p in enumerate(parts):
+                        if p == "REPOS" and i > 0:
+                            prev_part = parts[i - 1]
+                            if prev_part not in ["SOURCES", "CRAWLER"]:
+                                platforms.add(prev_part.lower())
+                except:
+                    pass
 
         return sorted(list(platforms))
 
@@ -289,66 +297,131 @@ class Config:
             env_k_up = env_key.upper()
             if env_k_up in (env_base_key, attr_name_key.upper(), full_env_key):
                 return self._parse_env_value(env_val)
-
-        # 4. 如果基础值是字典，或者基础值不存在但环境中有前缀匹配项（支持动态注入整个字典分支）
+            # 4. 如果基础值是字典/列表，或者环境中有前缀匹配项（支持动态注入整个分支）
         prefix_dot = f"{env_base_key}."
         prefix_under = f"{attr_name_key}_"
         full_prefix_dot = f"{full_env_key}."
+        prefix_bracket = f"{env_base_key}["
+        full_prefix_bracket = f"{full_env_key}["
+        full_env_under = full_env_key.replace(".", "_")
+
+        # 增加各种风格的前缀识别 (点号风格、下划线风格、属性名风格、索引风格)
+        prefixes = [
+            prefix_dot,
+            full_prefix_dot,
+            prefix_under,
+            f"{full_env_under}_",
+            prefix_bracket,
+            full_prefix_bracket,
+            f"{attr_name_key}[",
+            f"{full_env_under}[",
+        ]
 
         has_env_prefix = any(
-            k.upper().startswith(prefix_dot)
-            or k.upper().startswith(prefix_under)
-            or k.upper().startswith(full_prefix_dot)
-            for k in os.environ.keys()
+            k.upper().startswith(p) for p in prefixes for k in os.environ.keys()
         )
 
-        if isinstance(base_val, dict) or (base_val is None and has_env_prefix):
-            data = copy.deepcopy(base_val) if isinstance(base_val, dict) else {}
+        if isinstance(base_val, (dict, list)) or (base_val is None and has_env_prefix):
+            # 记录待注入的任务
+            injection_tasks = []
+            final_data_type = list if isinstance(base_val, list) else dict
 
             # 扫描所有环境变量进行合并
             for env_key, env_val in os.environ.items():
                 env_key_upper = env_key.upper()
                 remaining = ""
-                # 尝试带前缀的点号匹配 (MODELS.DOUBAO.API_KEY)
-                if env_key_upper.startswith(full_prefix_dot):
-                    remaining = env_key_upper[len(full_prefix_dot) :]
-                # 尝试剥离前缀后的点号匹配 (DOUBAO.API_KEY)
-                elif env_key_upper.startswith(prefix_dot):
-                    remaining = env_key_upper[len(prefix_dot) :]
-                # 尝试下划线前缀匹配 (DOUBAO_API_KEY)
-                elif env_key_upper.startswith(prefix_under):
-                    remaining = env_key_upper[len(prefix_under) :].replace("_", ".")
+
+                # 尝试匹配并提取剩余路径
+                for p in sorted(prefixes, key=len, reverse=True):
+                    if env_key_upper.startswith(p):
+                        # 如果前缀是 [ 结尾，保留 [
+                        if p.endswith("["):
+                            remaining = env_key_upper[len(p) - 1 :]
+                        else:
+                            remaining = env_key_upper[len(p) :]
+
+                        # 简单转换下划线风格
+                        if p == prefix_under or p == f"{full_env_under}_":
+                            remaining = remaining.replace("_", ".")
+
+                        # 启发式确定数据类型 (针对从 None 开始的情况)
+                        if base_val is None and remaining.startswith("["):
+                            final_data_type = list
+                        break
 
                 if remaining:
-                    self._inject_env_value(data, remaining, env_val)
+                    injection_tasks.append((remaining, env_val))
+
+            if not injection_tasks and base_val is None:
+                return default
+
+            # 初始化容器
+            data = (
+                copy.deepcopy(base_val) if base_val is not None else final_data_type()
+            )
+
+            # 执行注入
+            for rem, val in injection_tasks:
+                self._inject_env_value(data, rem, val)
+
             return data
 
         return base_val
 
-    def _inject_env_value(self, data: dict, env_path: str, value: Any):
+    def _inject_env_value(self, data: Any, env_path: str, value: Any):
         """
         递归注入环境变量值。env_path 是大写的点号路径。
+        支持 key[index] 或 [index] 格式。
         """
         parts = env_path.split(".")
 
-        # 优先匹配现有键名 (不区分大小写)
-        current_data_keys = {k.upper(): k for k in data.keys()}
+        # 1. 识别并提取数组索引，例如 REPOS[0] 或 [0]
+        match = re.match(r"^([^\[]+)?\[(\d+)\]$", parts[0])
+        if match:
+            key_name = match.group(1)
+            index = int(match.group(2))
 
-        # 尝试匹配现有键 (贪婪匹配)
+            if key_name:
+                # 处理字典中的列表，如 REPOS[0]
+                if not isinstance(data, dict):
+                    return
+                key = key_name.lower()
+                if key not in data or not isinstance(data[key], list):
+                    data[key] = []
+                target_list = data[key]
+            else:
+                # 处理直接是列表的情况，如 [0]
+                if not isinstance(data, list):
+                    return
+                target_list = data
+
+            # 自动扩容列表
+            while len(target_list) <= index:
+                target_list.append({})
+
+            if len(parts) == 1:
+                target_list[index] = self._parse_env_value(value)
+            else:
+                self._inject_env_value(target_list[index], ".".join(parts[1:]), value)
+            return
+
+        # 2. 原有的字典处理逻辑
+        if not isinstance(data, dict):
+            return
+
+        current_data_keys = {k.upper(): k for k in data.keys()}
         for i in range(len(parts), 0, -1):
             key_upper = ".".join(parts[:i])
             if key_upper in current_data_keys:
                 actual_key = current_data_keys[key_upper]
                 if i == len(parts):
-                    # 叶子节点
                     data[actual_key] = self._parse_env_value(value)
                     return
                 elif isinstance(data[actual_key], dict):
-                    # 中间层
                     self._inject_env_value(data[actual_key], ".".join(parts[i:]), value)
                     return
 
-        # 兜底：创建新路径
+        # 3. 兜底逻辑
         target = data
         for pk in parts[:-1]:
             pk_lower = pk.lower()
