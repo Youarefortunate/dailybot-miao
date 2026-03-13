@@ -104,7 +104,7 @@ class FeishuWorkflow(BaseWorkflow):
             logger.error(f"[{self.WORKFLOW_NAME}] 发送占位卡片失败: {e}")
             return {"raw_report": raw_report}
 
-    async def summarize(self, raw_report: str, extra_prompts: dict = None) -> str:
+    async def summarize(self, raw_report: str, is_camouflage: bool = False) -> str:
         """
         使用配置指定的模型进行总结
         """
@@ -136,7 +136,7 @@ class FeishuWorkflow(BaseWorkflow):
         logger.info(
             f"[{self.WORKFLOW_NAME}] 正在调度 {model_name} (model_id: {provider_key}) 模型生成总结..."
         )
-        return await ai_instance.summarize(raw_report, extra_prompts=extra_prompts)
+        return await ai_instance.summarize(raw_report, is_camouflage=is_camouflage)
 
     async def on_report_success(self, summary: str, context: dict):
         """

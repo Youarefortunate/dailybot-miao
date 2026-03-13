@@ -71,7 +71,7 @@ class AIFactory(BaseAIProvider):
             return obj.get(attr, default)
         return getattr(obj, attr, default)
 
-    async def summarize(self, text: str, extra_prompts: dict = None) -> str:
+    async def summarize(self, text: str, is_camouflage: bool = False) -> str:
         """
         AI 总结实现，支持动态负载模板和严格配置校验
         """
@@ -107,9 +107,17 @@ class AIFactory(BaseAIProvider):
                 global_prompts, "system", "你是一个日报总结助手。"
             )
 
-        extra_prompts = extra_prompts or {}
-        extra_system = extra_prompts.get("system")
-        extra_user = extra_prompts.get("user")
+        extra_system = None
+
+        # 检查是否触发了伪装，动态加载模型对应的伪装提示词或者兜底全局提示词
+        if is_camouflage:
+            camou_prompt = ai_prompts.get("camouflage")
+
+            if not camou_prompt and cfg.get("use_global_camouflage", False):
+                camou_prompt = global_prompts.get("camouflage")
+
+            if camou_prompt:
+                extra_system = camou_prompt
 
         # 融合系统指令
         if extra_system:
@@ -120,11 +128,8 @@ class AIFactory(BaseAIProvider):
         if user_template is None:
             user_template = self._get_prompt_attr(global_prompts, "user", "")
 
-        # 拼接用户提示词：模板 + 额外指令(如伪装) + 原始文本
+        # 拼接用户提示词
         user_content = user_template or ""
-        if extra_user:
-            user_content = f"{user_content}\n\n{extra_user}"
-
         user_content = f"{user_content}\n\n{text}" if user_content else text
 
         # 优先使用显式指定的 model_id (反查询址带入)，否则读旧配置 model 或 models 数组第一项
@@ -182,23 +187,17 @@ class AIFactory(BaseAIProvider):
                 process_params["timeout"] = process_params["timeout"] * 60
             payload.update(process_params)
 
-        # 5. 审计日志 (仅在存在额外增强提示词时触发，减少常规噪音)
-        if extra_prompts:
-            # 兼容不同 payload 结构
-            audit_path = (
-                payload.get("messages")
-                if "messages" in payload
-                else "Non-standard payload structure"
-            )
+        # 5. 审计日志 (仅在存在额外增强提示词时触发)
+        if is_camouflage:
             logger.debug(
-                f"[AIFactory] 请求负载: {json.dumps(audit_path, ensure_ascii=False, indent=2)}"
+                f"[AIFactory] 请求负载: {json.dumps(payload, ensure_ascii=False, indent=2)}"
             )
 
         # 6. 执行请求
         try:
             res_data = await chat_req.fetch(payload)
             final_res = self._parse_response(res_data)
-            if extra_prompts:
+            if is_camouflage:
                 logger.debug(f"✨ [AIFactory] 响应预览 (前200位): {final_res[:200]}...")
             return final_res
         except Exception as e:

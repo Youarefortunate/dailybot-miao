@@ -42,6 +42,7 @@ models:
     api_key: ""
     base_url: ""
     models: []
+    use_global_camouflage: true # 是否使用全局伪装提示词（默认false）
     params:
       timeout: 60 # 设定1小时超时
   glm:

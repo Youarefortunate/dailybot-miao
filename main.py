@@ -121,7 +121,7 @@ async def run_reporting_logic():
         return
 
     # 1. 异步数据采集与可能触发的伪装补充
-    raw_report, total_count, extra_prompts, fake_items_used = (
+    raw_report, total_count, is_camouflage, fake_items_used = (
         await crawler_manager.collect_and_camouflage()
     )
 
@@ -160,7 +160,7 @@ async def run_reporting_logic():
                 for wf in active_workflows
                 if config.get_platform(wf.WORKFLOW_NAME).get("ai_model") == m_name
             )
-            return await sample_wf.summarize(raw_report, extra_prompts=extra_prompts)
+            return await sample_wf.summarize(raw_report, is_camouflage=is_camouflage)
 
         task = asyncio.create_task(_do_request())
         model_tasks[m_name] = task

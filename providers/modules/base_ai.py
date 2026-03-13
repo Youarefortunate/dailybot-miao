@@ -15,7 +15,7 @@ class BaseAIProvider(ABC):
             ai_manager.register_ai(cls.AI_PROVIDER_NAME, cls)
 
     @abstractmethod
-    async def summarize(self, text: str) -> str:
+    async def summarize(self, text: str, extra_prompts: str = "") -> str:
         """
         根据供应商特定的逻辑（Prompt、参数等）执行文本总结
         """

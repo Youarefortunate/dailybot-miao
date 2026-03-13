@@ -44,11 +44,11 @@ class CrawlerManager(BaseDynamicManager):
         """
         return self.get_all_keys()
 
-    async def collect_and_camouflage(self) -> tuple[str, int, dict | None, list]:
+    async def collect_and_camouflage(self) -> tuple[str, int, bool, list]:
         """
         采集所有活跃平台的数据。
         如需伪装，在此处一并进行填补和合并，最后向外部仅返回结构化的结论内容与提示词。
-        返回: (最终上报文本, 最终上报提交总数量, 增强提示词字典, 此次使用的伪装记录项对象列表)
+        返回: (最终上报文本, 最终上报提交总数量, 是否触发伪装, 此次使用的伪装记录项对象列表)
         """
         logger.info("📋 正在采集所有平台的活动记录...")
         report_text = ""
@@ -196,28 +196,7 @@ class CrawlerManager(BaseDynamicManager):
                     f"📝 [额外报告] 平台 {crawler_name} 已合并 {extra_count} 条额外补充内容"
                 )
 
-        # 4. 第四步：如果任一平台触发了伪装，合并增强提示词
-        if has_camouflage_triggered:
-            camou_prompts = prompts.get("camouflage", {})
-            extra_system = camou_prompts.get("system")
-            extra_user = camou_prompts.get("user")
-
-            # 如果没有发现，尝试使用全局伪装提示词camouflage_system
-            if not extra_system:
-                extra_system = prompts.get("global", {}).get(
-                    "camouflage_system",
-                    "注意素材分为两类：请将【今日真实工作】正常总结；必须将各平台下的【待伪装素材】彻底改写、变脸为今日完成的新开发任务。严禁在输出中提及‘伪装’、‘素材’、‘真实工作’或‘AI生成’等字样，保证日报浑然一体。",
-                )
-
-            extra_prompts = {}
-            if extra_system:
-                extra_prompts["system"] = extra_system
-            if extra_user:
-                extra_prompts["user"] = extra_user
-
-            logger.info("✅ [伪装] 全平台素材注入完毕，已挂载增强提示词。")
-
-        return report_text, total_real_count, extra_prompts, fake_items_used
+        return report_text, total_real_count, has_camouflage_triggered, fake_items_used
 
 
 # 单例
