@@ -99,7 +99,7 @@ crawler_sources:
     camouflage:
       enabled: true # 是否启用
       threshold: 4 # 执行阈值：当日该平台总提交数少于此值时触发
-      max_items: 5 # 目标总条数：触发后，伪装记录数 = max_items - 真实采集数
+      max_items: 5 # 目标总条数：触发后，伪装记录数 = max_items - 真实采集数 + 人工补充
       lookback_days: 14 # 回溯天数：寻找素材的范围
       cooldown_days: 10 # LRU 冷却天数：素材使用后的禁止期 (天)
     # 额外信息补充（人工补充）
@@ -113,7 +113,7 @@ crawler_sources:
       auto_cleanup:
         enabled: true # 采集完成后自动清空源文件
         # 定时清理时间（与日报采集时间不同时使用定时清理）
-        cleanup_time: "24:00"
+        # cleanup_time: "24:00"
 
 # 启用的工作流，名称要和 platforms 中的 key 对应
 enabled_workflows: ["wecom"]

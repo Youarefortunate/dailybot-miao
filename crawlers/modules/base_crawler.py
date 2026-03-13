@@ -1,4 +1,5 @@
 import asyncio
+import re
 import random
 from abc import ABC, abstractmethod
 from collections import defaultdict
@@ -270,24 +271,23 @@ class BaseCrawler(ABC):
 
         return all_activities
 
-    def generate_report(self, activities_map: dict) -> tuple[str, int]:
+    def generate_report(self, activities_map: dict, indent: int = 4) -> tuple[str, int]:
         """
         根据采集到的活动数据（结构化字典），生成平台专属的汇报文本组合。
-        子类可重写此方法以定制平台的整个汇报排版（例如更改“数据源”为特定平台词汇）。
         """
-        platform_name = self.get_platform_name().upper()
-        platform_report = f"\n  平台: {platform_name}\n"
         total_count = 0
+        report_text = ""
+        base_space = " " * indent
 
         for entity_name, date_groups in activities_map.items():
-            platform_report += f"    数据源: {entity_name}\n"
+            report_text += f"{base_space}数据源: {entity_name}\n"
             for date_str in sorted(date_groups.keys(), reverse=True):
-                platform_report += f"      📅 日期: {date_str}\n"
+                report_text += f"{base_space}  📅 日期: {date_str}\n"
                 for msg in date_groups[date_str]:
-                    platform_report += f"        - {msg}\n"
+                    report_text += f"{base_space}    - {msg}\n"
                     total_count += 1
 
-        return platform_report, total_count
+        return report_text, total_count
 
     async def generate_camouflage_data(
         self, needed_count: int, **kwargs
@@ -454,25 +454,68 @@ class BaseCrawler(ABC):
         """
         return {}
 
-    def generate_extra_report(self, activities_map: dict) -> tuple[str, int]:
+    def _count_extra_items(self, content: str) -> int:
         """
-        生成额外报告的汇报文本。子类可重写。
+        根据内容识别记录条数：
+        - 如果包含标准 Markdown 列表项（换行且以 - , * , + , 1. 等开头），则按点计数。
+        - 如果没有标准列表项，但存在行内数字分点（如 1、2、 或 1. 2. 等），也按点计数。
+        - 如果都无法分辨，则统一按 1 条计入。
+        """
+        stripped_content = content.strip()
+        if not stripped_content:
+            return 0
+
+        # 1. 优先尝试标准的换行列表项统计
+        lines = [line.strip() for line in stripped_content.split("\n") if line.strip()]
+        if not lines:
+            return 0
+
+        # 行首匹配：- , * , + 或 数字. 或 数字、
+        line_pattern = r"^(?:[-*+]|\d+[.、])\s+.+"
+        line_item_count = 0
+        for line in lines:
+            if re.match(line_pattern, line):
+                line_item_count += 1
+
+        if line_item_count > 0:
+            return line_item_count
+
+        # 2. 如果没有发现行首标识，尝试查找“一坨内容”中的行内数字分点
+        # 匹配：数字. 或 数字、 且这些标识通常用来开启一段内容
+        inline_pattern = r"(?:\d+[.、])"
+        inline_matches = re.findall(inline_pattern, stripped_content)
+
+        if inline_matches:
+            # 去重处理或检查起始序号，为了增加确定性
+            has_start_index = any(m.startswith("1") for m in inline_matches)
+            if has_start_index or len(inline_matches) > 1:
+                return len(inline_matches)
+
+        # 很难分辨补充了多少条（即没有分点）的情况下统一按1条
+        return 1
+
+    def generate_extra_report(
+        self, activities_map: dict, indent: int = 4
+    ) -> tuple[str, int]:
+        """
+        生成额外报告的汇报文本。
         """
         if not activities_map:
             return "", 0
 
         total_count = 0
-        report_text = "\n  📝 [额外信息补充]\n"
+        report_text = ""
+        base_space = " " * indent
 
         for date_str, contents in activities_map.items():
             if not contents:
                 continue
 
-            report_text += f"    📅 日期: {date_str}\n"
+            report_text += f"{base_space}📅 日期: {date_str}\n"
             for content in contents:
                 for line in content.split("\n"):
-                    report_text += f"      {line}\n"
-                total_count += 1
+                    report_text += f"{base_space}  {line}\n"
+                total_count += self._count_extra_items(content)
 
         return report_text, total_count
 
