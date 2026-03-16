@@ -73,6 +73,13 @@ models:
     models: []
     params:
       timeout: 60
+  openai:
+    name: "OpenAI Codex"
+    api_key: ""
+    base_url: ""
+    models: []
+    params:
+      timeout: 60
 
 # 抓取平台与采集源配置
 crawler_sources:
