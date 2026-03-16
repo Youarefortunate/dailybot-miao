@@ -77,6 +77,7 @@ models:
 # 抓取平台与采集源配置
 crawler_sources:
   gitlab:
+    enabled: true
     token: ""
     base_url: ""
     target_user: ""

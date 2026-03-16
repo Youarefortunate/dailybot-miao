@@ -1,5 +1,6 @@
 import asyncio
 import json
+import textwrap
 import os
 import subprocess
 import sys
@@ -160,7 +161,55 @@ async def run_reporting_logic():
                 for wf in active_workflows
                 if config.get_platform(wf.WORKFLOW_NAME).get("ai_model") == m_name
             )
-            return await sample_wf.summarize(raw_report, is_camouflage=is_camouflage)
+            summary = await sample_wf.summarize(raw_report, is_camouflage=is_camouflage)
+
+            # 💡 [精细化排版] 展示 AI 润色结果
+            if summary:
+                try:
+                    res_list = json.loads(summary)
+                    if isinstance(res_list, list) and res_list:
+                        curr_date = datetime.now().strftime("%Y-%m-%d")
+                        border = "-" * 80
+                        header = f"  📊 [每日工作总结-AI润色] (日期: {curr_date})"
+                        lines = ["", border, "", header]
+
+                        for item in res_list:
+                            content = item.get("content", "")
+                            result = item.get("result", "无")
+                            time_range = f"{item.get('start_time', '??:??')}~{item.get('end_time', '??:??')}"
+                            priority = item.get("priority", "重要、不紧急")
+                            job_type = item.get("type", "编码")
+                            project = item.get("project", "其他")
+
+                            # 动态颜色球逻辑
+                            if "不重要、不紧急" in priority:
+                                p_emoji = "🟢"
+                            elif "重要" in priority:
+                                p_emoji = "🔴"
+                            else:
+                                p_emoji = "🟡"
+
+                            # 自动换行算法
+                            wrapped_content = textwrap.fill(
+                                content,
+                                width=48,
+                                initial_indent="    - ",
+                                subsequent_indent="      ",
+                            )
+
+                            lines.append(wrapped_content)
+                            lines.append(f"        └─ 成果: {result}")
+                            lines.append(
+                                f"        └─ 详情: 🕒 {time_range} | {p_emoji} {priority} | 🏷️ {job_type} | 🏢 {project}"
+                            )
+                            lines.append("")
+
+                        lines.append(border)
+                        log.info("\n".join(lines))
+                except Exception as e:
+                    log.debug(f"AI 润色结果预览渲染失败: {e}")
+
+            return summary
 
         task = asyncio.create_task(_do_request())
         model_tasks[m_name] = task
@@ -227,28 +276,35 @@ async def main():
     # 0. 环境自检：如果启用了 RPA，确保浏览器驱动已安装 (傻瓜式运行)
     await ensure_playwright_browsers()
 
-    # 1. 启动 WebServer (OAuth 授权需要)
-    srv_cfg = oauth_platform_manager.get_oath_server_config()
-    log.info(
-        f"🌐 [系统] 启动 OAuth 回调服务器于 {srv_cfg['host']}:{srv_cfg['port']}..."
-    )
+    # 1. 判断是否需要启动 WebServer (OAuth 授权或未来可能的 WebSocket/Webhook 需要)
+    enabled_workflow_names = getattr(config, "ENABLED_WORKFLOWS")
+    oath_required_platforms = oauth_platform_manager.get_registered_oath_platforms()
+    active_oath_platforms = [
+        p for p in enabled_workflow_names if p in oath_required_platforms
+    ]
 
-    config_server = uvicorn.Config(oauth_platform_manager.app, **srv_cfg)
-    server = uvicorn.Server(config_server)
-    server_task = asyncio.create_task(server.serve())
+    is_server_required = len(active_oath_platforms) > 0
+
+    server = None
+    server_task = None
+
+    if is_server_required:
+        srv_cfg = oauth_platform_manager.get_oath_server_config()
+        log.info(
+            f"🌐 [系统] 启动 OAuth 回调服务器于 {srv_cfg['host']}:{srv_cfg['port']}..."
+        )
+        config_server = uvicorn.Config(oauth_platform_manager.app, **srv_cfg)
+        server = uvicorn.Server(config_server)
+        server_task = asyncio.create_task(server.serve())
+    else:
+        log.info("🌐 [系统] 当前启用的工作流无需 Web 服务支持，跳过服务器启动。")
 
     # 2. 授权等待逻辑
     timeout_seconds = 60
     start_wait = datetime.now()
 
-    log.info("⏳ 检查环境就绪状态...")
-    enabled_workflow_names = getattr(config, "ENABLED_WORKFLOWS")
-    oath_required_platforms = oauth_platform_manager.get_registered_oath_platforms()
-
     # 识别哪些已启用的平台需要通过授权中心进行 OAuth 授权
-    active_oath_platforms = [
-        p for p in enabled_workflow_names if p in oath_required_platforms
-    ]
+    log.info("⏳ 检查环境就绪状态...")
 
     try:
         while True:
@@ -282,11 +338,14 @@ async def main():
         log.info("🧹 程序运行结束，清理资源...")
         try:
             await HttpRequest.close_all()
-            server.should_exit = True
-            # 给 ProactorEventLoop 留出一点缓冲时间来清理管道
-            await asyncio.sleep(0.5)
-            await server_task
-        except:
+            if server and server_task:
+                server.should_exit = True
+                # 给 ProactorEventLoop 留出一点缓冲时间来清理管道
+                await asyncio.sleep(0.5)
+                await server_task
+        except asyncio.CancelledError:
+            pass
+        except Exception:
             pass
 
 

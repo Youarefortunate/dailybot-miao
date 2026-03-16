@@ -66,6 +66,12 @@ class CrawlerManager(BaseDynamicManager):
         platform_names = []
 
         for p_name in configured_platforms:
+            # 检查采集源是否启用，默认为开启
+            is_enabled = config.get(f"crawler_sources.{p_name}.enabled", True)
+            if not (is_enabled is True or str(is_enabled).lower() == "true"):
+                logger.info(f"🚫 [系统] 采集源 {p_name} 已显式禁用，跳过。")
+                continue
+
             crawler_cls = self.get_crawler_class(p_name)
             if not crawler_cls:
                 logger.warning(f"⚠️ 平台 {p_name} 未找到爬虫实现，跳过。")
