@@ -48,7 +48,7 @@ class BaseDynamicManager:
         """
         with self._lock:
             self._registry[key.lower()] = cls
-            logger.debug(f"[{self.__class__.__name__}] 注册成功: {key}")
+            # logger.debug(f"[{self.__class__.__name__}] 注册成功: {key}")
 
     def get_class(self, key: str):
         """

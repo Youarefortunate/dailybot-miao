@@ -39,7 +39,7 @@ hidden_imports = [
 ]
 
 a = Analysis(
-    ['../dailybot_scheduler.py'],
+    ['../main.py'],
     pathex=[],
     binaries=[],
     datas=added_files,
