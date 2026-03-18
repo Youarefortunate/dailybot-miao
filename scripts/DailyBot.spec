@@ -1,4 +1,8 @@
-# -*- mode: python ; coding: utf-8 -*-
+import os
+import site
+
+# 获取当前环境的 site-packages 路径
+site_packages = site.getsitepackages()[0]
 
 block_cipher = None
 
@@ -19,8 +23,8 @@ added_files = [
     ('../common', 'common'),
     ('../enums', 'enums'),
     ('../exceptions', 'exceptions'),
-    ('D:/python/Lib/site-packages/playwright/driver', 'driver'),
-    ('D:/python/Lib/site-packages/playwright_stealth/js', 'playwright_stealth/js'),
+    (os.path.join(site_packages, 'playwright/driver'), 'driver'),
+    (os.path.join(site_packages, 'playwright_stealth/js'), 'playwright_stealth/js'),
 ]
 
 # 隐藏导入列表 (PyInstaller 无法自动识别的动态导入)
