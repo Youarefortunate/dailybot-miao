@@ -126,7 +126,9 @@ def file_exists(file_path: str) -> bool:
     return os.path.exists(file_path)
 
 
-def cleanup_old_files(directory: str, extension: str, days: int, date_format: str = "%Y-%m-%d") -> int:
+def cleanup_old_files(
+    directory: str, extension: str, days: int, date_format: str = "%Y-%m-%d"
+) -> int:
     """
     清理目录中过期的文件（根据文件名中的日期判断）。
 
@@ -139,8 +141,7 @@ def cleanup_old_files(directory: str, extension: str, days: int, date_format: st
     if not os.path.exists(directory):
         return 0
 
-    tz = timezone(timedelta(hours=8))
-    now = datetime.now(tz)
+    now = datetime.now()
     deleted_count = 0
 
     try:

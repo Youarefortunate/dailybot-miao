@@ -2,7 +2,7 @@ import os
 import sys
 from loguru import logger
 from common.config import config
-from utils.path_helper import get_app_dir
+from utils.path_helper import get_app_dir, cleanup_old_files
 
 # 获取日志配置
 log_cfg = config.get("log", {})
@@ -39,3 +39,17 @@ logger.add(
     retention=log_retention,
     encoding="utf-8",
 )
+
+# 因为路径中带有 {time} 时，loguru 的内置 retention 会失效。
+# 这里我们执行一次手动扫描，清理 7 天前的过旧日志文件
+try:
+    log_dir = os.path.dirname(log_path)
+    # 假设文件名格式为 dailybot_YYYY-MM-DD.log
+    # 我们根据后缀 .log 和 前缀 dailybot_ 尝试匹配并清理
+    cleanup_count = cleanup_old_files(
+        log_dir, ".log", 7, date_format="dailybot_%Y-%m-%d"
+    )
+    if cleanup_count > 0:
+        logger.info(f"💾 [日志自动清理] 发现并清除了 {cleanup_count} 个过期日志文件。")
+except Exception:
+    pass
