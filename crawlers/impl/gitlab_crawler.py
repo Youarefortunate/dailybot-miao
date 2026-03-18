@@ -62,15 +62,21 @@ class GitlabCrawler(BaseCrawler):
         """
         return getattr(config, "GITLAB_REPOS", [])
 
-    async def fetch_activities(
-        self, entity_config: dict, since: str, until: str
-    ) -> list:
+    async def fetch_activities(self, entity_config: dict, query_params: dict) -> list:
         """
-        GitLab 版：由于支持多分支，内部实现分支轮循并合并结果
+        GitLab 版：支持多分支、API 层过滤及自动分页。
+
+        预期 query_params 包含:
+        - since/until (str): ISO 时间范围
+        - target_user (str, optional): 目标作者过滤
         """
         repo_path = entity_config.get("path")
         if not repo_path:
             return []
+
+        since = query_params.get("since")
+        until = query_params.get("until")
+        target_user = query_params.get("target_user")
 
         # GitLab API 要求项目路径必须经过 URL 编码
         encoded_path = urllib.parse.quote_plus(repo_path)
@@ -82,20 +88,40 @@ class GitlabCrawler(BaseCrawler):
         all_raw_commits = []
         for branch in branches:
             try:
-                # 必须记得 await，因为 fetch() 是异步方法
-                res_data = await self.gitlab_api.fetch(
-                    {
+                page = 1
+                while True:
+                    logger.debug(
+                        f"🔍 GitLab [{repo_path}] 分支 {branch} 正在请求第 {page} 页数据..."
+                    )
+                    # 使用 GitLab API 获取提交记录，带上作者过滤
+                    params = {
                         "project_id": encoded_path,
                         "ref_name": branch,
                         "since": since,
                         "until": until,
+                        "per_page": 100,
+                        "page": page,
                     }
-                )
-                if res_data and isinstance(res_data, list):
-                    # 补充分支信息到 raw 数据中，方便后续提取
-                    for commit in res_data:
+                    if target_user:
+                        params["author"] = target_user
+
+                    # 调用获取数据
+                    data = await self.gitlab_api.fetch(params)
+
+                    if not data or not isinstance(data, list):
+                        break
+
+                    # 补充分支信息
+                    for commit in data:
                         commit["_branch_name"] = branch
-                    all_raw_commits.extend(res_data)
+                    all_raw_commits.extend(data)
+
+                    # 检查分页：如果返回数据不满 per_page，说明到头了
+                    if len(data) < 100:
+                        break
+
+                    page += 1
+
             except Exception as e:
                 logger.error(f"GitLab [{repo_path}] 分支 {branch} 数据拉取失败: {e}")
 

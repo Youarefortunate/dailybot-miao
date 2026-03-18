@@ -44,12 +44,13 @@ class BaseCrawler(ABC):
         pass
 
     @abstractmethod
-    async def fetch_activities(
-        self, entity_config: dict, since: str, until: str
-    ) -> list:
+    async def fetch_activities(self, entity_config: dict, query_params: dict) -> list:
         """
-        调用平台 API 获取原始活动（Activity）列表
-        :param entity_config: 数据实体配置字典 (例如包含 path, branch 等)
+        调用平台 API 获取原始活动（Activity）列表。
+        子类应根据自身平台协议和业务需求实现具体的采集逻辑。
+
+        :param entity_config: 数据实体配置字典 (如仓库路径、任务面板 ID 等)
+        :param query_params: 查询上下文参数 (由调用者根据采集场景动态注入)
         """
         pass
 
@@ -188,8 +189,15 @@ class BaseCrawler(ABC):
                 )
 
                 try:
+                    # 构造标准查询参数对象
+                    query_params = {
+                        "since": since,
+                        "until": until,
+                        "target_user": target_user,
+                    }
+
                     # 子类需全权处理特定于该平台的并发和请求细节（如 Git 分支轮循）
-                    raw_items = await self.fetch_activities(entity, since, until)
+                    raw_items = await self.fetch_activities(entity, query_params)
                     if not raw_items or not isinstance(raw_items, list):
                         continue
 
@@ -329,9 +337,12 @@ class BaseCrawler(ABC):
             async def fetch_for_entity(entity: dict):
                 source_name = entity.get("name") or entity.get("path") or "Unknown"
                 try:
-                    raw_items = await self.fetch_activities(
-                        entity, curr_since, curr_until
-                    )
+                    query_params = {
+                        "since": curr_since,
+                        "until": curr_until,
+                        "target_user": target_user,
+                    }
+                    raw_items = await self.fetch_activities(entity, query_params)
                     if not raw_items:
                         return
 
