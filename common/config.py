@@ -41,42 +41,38 @@ class Config:
     def setup_env(self):
         """
         加载 .env 文件中的环境变量。
+        优先级：外部运行目录下的 .env > 内部打包路径下的 .env (二者选其一，独占模式)。
         """
-
-        # 先尝试获取打包目录下的 .env (作为模板或默认)
-        env_path = get_resource_path(".env")
-        if os.path.exists(env_path):
-            load_dotenv(env_path, override=True)
-
-        # 再尝试加载程序运行目录下的 .env (用户自定义)
+        # 1. 优先尝试加载程序运行目录下的 .env (用户自定义)
         local_env = os.path.join(get_app_dir(), ".env")
         if os.path.exists(local_env):
             load_dotenv(local_env, override=True)
+            return
+
+        # 2. 如果外部没有，则尝试获取打包目录下的 .env (作为模板或默认)
+        env_path = get_resource_path(".env")
+        if os.path.exists(env_path):
+            load_dotenv(env_path, override=True)
 
     @staticmethod
     def load_yaml_config():
         """
         从 config.yaml 或 config/config.yaml 读取配置。
-        支持外部化覆盖，优先级：当前执行目录 > config 子目录 > 内部打包路径。
+        支持外部化覆盖，优先级：当前执行目录 > config 子目录 > 内部打包路径 (独占模式)。
         """
-
-        # 1. 内部打包路径 (默认逻辑)
-        yaml_path = get_resource_path(os.path.join("config", "config.yaml"))
-
-        # 2. 外部运行目录路径 (允许用户外部覆盖)
         app_dir = get_app_dir()
         local_yaml_direct = os.path.join(app_dir, "config.yaml")  # 与 .env 同级
         local_yaml_subdir = os.path.join(app_dir, "config", "config.yaml")
+        yaml_path_internal = get_resource_path(os.path.join("config", "config.yaml"))
 
-        # 确定最终使用的路径
+        # 确定最终使用的路径 (独占逻辑：只要外部有，就不看内部)
         if os.path.exists(local_yaml_direct):
             target_path = local_yaml_direct
         elif os.path.exists(local_yaml_subdir):
             target_path = local_yaml_subdir
+        elif os.path.exists(yaml_path_internal):
+            target_path = yaml_path_internal
         else:
-            target_path = yaml_path
-
-        if not os.path.exists(target_path):
             return {}
 
         try:
@@ -84,7 +80,7 @@ class Config:
                 data = yaml.safe_load(f) or {}
                 return data if isinstance(data, dict) else {}
         except Exception as e:
-            logger.warning(f"读取 config/config.yaml 失败: {e}")
+            logger.warning(f"读取配置失败 ({target_path}): {e}")
             return {}
 
     def generate_dynamic_attributes(self):
@@ -352,9 +348,6 @@ class Config:
                 if remaining:
                     injection_tasks.append((remaining, env_val))
 
-            if not injection_tasks and base_val is None:
-                return default
-
             # 初始化容器
             data = (
                 copy.deepcopy(base_val) if base_val is not None else final_data_type()
@@ -364,9 +357,15 @@ class Config:
             for rem, val in injection_tasks:
                 self._inject_env_value(data, rem, val)
 
-            return data
+            final_data = data
+        else:
+            final_data = base_val
 
-        return base_val
+        # 递归清理所有配置项中的空占位符 (None, "", {}, [])，确保无实质内容的项不会被采用
+        cleaned_data = self._clean_empty_values(final_data)
+
+        # 如果清理后结果为空，则回退到提供的默认值
+        return cleaned_data if cleaned_data is not None else default
 
     def _inject_env_value(self, data: Any, env_path: str, value: Any):
         """
@@ -429,6 +428,28 @@ class Config:
                 target[pk_lower] = {}
             target = target[pk_lower]
         target[parts[-1].lower()] = self._parse_env_value(value)
+
+    def _clean_empty_values(self, data: Any) -> Any:
+        """
+        递归清理配置中的空值（None, "", {}, []）。
+        保留有意义的 Falsy 值（如 0, 0.0, False）。
+        """
+        # 显式定义什么是“空”：None、空字符、空字典、空列表
+        if data is None or data == "" or data == {} or data == []:
+            return None
+
+        if isinstance(data, dict):
+            cleaned = {k: self._clean_empty_values(v) for k, v in data.items()}
+            # 仅保留非 None 的键值对
+            result = {k: v for k, v in cleaned.items() if v is not None}
+            return result if result else None
+        elif isinstance(data, list):
+            cleaned = [self._clean_empty_values(item) for item in data]
+            # 仅保留非 None 的项
+            result = [i for i in cleaned if i is not None]
+            return result if result else None
+
+        return data
 
     @staticmethod
     def _parse_env_value(val: Any) -> Any:
