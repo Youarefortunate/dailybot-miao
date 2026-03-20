@@ -1,3 +1,5 @@
+version: "1.0.0"
+
 # 平台配置
 platforms:
   # 飞书
@@ -80,6 +82,7 @@ models:
     models: []
     params:
       timeout: 60
+      reasoning_effort: "high"
 
 # 抓取平台与采集源配置
 crawler_sources:

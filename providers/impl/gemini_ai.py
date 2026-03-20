@@ -17,9 +17,16 @@ class GeminiAI(AIFactory):
         # 绑定已注册的 api 模块
         self.api_reqs["chat_completions"] = use_request(apis.ai_gemini.chat_completions)
 
+    def get_default_payload_template(self, model_id: str) -> dict:
+        """
+        定制 Gemini 特有的 payload 结构模板，带占位符。
+        """
+        return {"contents": [{"parts": [{"text": "{system}\n\n{user}"}]}]}
+
     async def summarize(self, text: str, is_camouflage: bool = False) -> str:
         """
-        Gemini 专用的请求封装，仅负责构造符合规范的 Payload
+        Gemini 专用的请求封装，主要用于注入特定的参数（如 model 放入 param）
+        然后通过委托给父类进行 payload 模板组装。
         """
         if not self.model_cfg:
             self.model_cfg = config.get_model(self.AI_PROVIDER_NAME)
@@ -34,10 +41,6 @@ class GeminiAI(AIFactory):
                 and isinstance(cfg.get("models"), list)
             ):
                 model_id = cfg.get("models")[0]
-
-        # 确保 payload 符合 Gemini 规范
-        if not cfg.get("payload"):
-            cfg["payload"] = {"contents": [{"parts": [{"text": "{system}\n\n{user}"}]}]}
 
         # 注入 model 以便 ApiRegister 替换 URL 中的 {model} 占位符
         if model_id:

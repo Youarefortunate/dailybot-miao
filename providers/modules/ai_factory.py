@@ -71,6 +71,31 @@ class AIFactory(BaseAIProvider):
             return obj.get(attr, default)
         return getattr(obj, attr, default)
 
+    def get_payload_context(
+        self, model_id: str, system_prompt: str, user_content: str
+    ) -> dict:
+        """
+        获取模板渲染上下文
+        """
+        return {
+            "model": model_id,
+            "system": system_prompt,
+            "user": user_content,
+        }
+
+    def get_default_payload_template(self, model_id: str) -> dict:
+        """
+        获取默认的 payload 结构模板，返回的字典中可以使用占位符（如 {system}, {user}），
+        后续将由 self._render_payload 进行渲染。子类可重写此方法以定制其独有的默认格式。
+        """
+        return {
+            "model": "{model}",
+            "messages": [
+                {"role": "system", "content": "{system}"},
+                {"role": "user", "content": "{user}"},
+            ],
+        }
+
     async def summarize(self, text: str, is_camouflage: bool = False) -> str:
         """
         AI 总结实现，支持动态负载模板和严格配置校验
@@ -152,32 +177,21 @@ class AIFactory(BaseAIProvider):
                 f"[{self.AI_PROVIDER_NAME}] 配置错误：缺少指定使用的ai模型名称"
             )
 
-        context = {
-            "model": model_id,
-            "system": system_prompt,
-            "user": user_content,
-        }
+        context = self.get_payload_context(model_id, system_prompt, user_content)
 
-        # 3. 构建请求负载 (由配置驱动)
-        payload_template = cfg.get("payload")
-        if payload_template:
-            try:
-                payload = self._render_payload(payload_template, context)
-            except KeyError as e:
-                raise ValueError(
-                    f"[{self.AI_PROVIDER_NAME}] 负载渲染失败：模板中引用了未定义的变量 {str(e)}"
-                )
-            except Exception as e:
-                raise ValueError(f"[{self.AI_PROVIDER_NAME}] 负载渲染出错：{str(e)}")
-        else:
-            # 默认使用标准 OpenAI 格式模板
-            payload = {
-                "model": model_id,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_content},
-                ],
-            }
+        # 3. 构建请求负载 (由配置驱动或者使用子类默认模板)
+        payload_template = cfg.get("payload") or self.get_default_payload_template(
+            model_id
+        )
+
+        try:
+            payload = self._render_payload(payload_template, context)
+        except KeyError as e:
+            raise ValueError(
+                f"[{self.AI_PROVIDER_NAME}] 负载渲染失败：模板中引用了未定义的变量 {str(e)}"
+            )
+        except Exception as e:
+            raise ValueError(f"[{self.AI_PROVIDER_NAME}] 负载渲染出错：{str(e)}")
 
         # 4. 合并自定义参数 (API 层的额外控制，如 temperature, timeout 等)
         custom_params = cfg.get("params", {})
