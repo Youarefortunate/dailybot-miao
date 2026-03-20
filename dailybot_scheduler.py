@@ -1,354 +1,516 @@
-import os
-import sys
-import time
-import subprocess
-import atexit
-import psutil
-import winshell
-from datetime import datetime
-from win32com.client import Dispatch
-from loguru import logger
+"""
+DailyBot Windows 定时调度器
 
-# 确保能导入 common.config
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from common.config import config
+职责：
+1. 管理 Windows 定时任务（schtasks）和开机自启动（注册表）
+2. 响应定时触发，执行核心业务逻辑
+3. 支持调试命令行参数
+
+用法：
+    DailyBot.exe              # 同步配置（注册/删除定时任务和自启动），静默退出
+    DailyBot.exe --trigger    # 执行核心业务逻辑（由定时任务调用）
+    DailyBot.exe --status     # 查看当前任务注册状态（分配控制台窗口）
+    DailyBot.exe --uninstall  # 清理所有已注册的任务和自启动
+"""
+
+import argparse
+import asyncio
+import ctypes
+import logging
+import os
+import subprocess
+import sys
+import winreg
+
 from utils.path_helper import get_app_dir
 
+# ---------------------------------------------------------------------------
+# 常量
+# ---------------------------------------------------------------------------
 
-class WindowsTaskScheduler:
+TASK_NAME_PREFIX = "DailyBot"
+REGISTRY_KEY_PATH = r"Software\Microsoft\Windows\CurrentVersion\Run"
+REGISTRY_VALUE_NAME = "DailyBot"
+LOCK_FILE_NAME = ".dailybot.lock"
+
+WEEKDAY_MAP = {
+    1: "MON",
+    2: "TUE",
+    3: "WED",
+    4: "THU",
+    5: "FRI",
+    6: "SAT",
+    7: "SUN",
+}
+
+WEEKDAY_LABEL = {
+    1: "周一",
+    2: "周二",
+    3: "周三",
+    4: "周四",
+    5: "周五",
+    6: "周六",
+    7: "周日",
+}
+
+
+# ---------------------------------------------------------------------------
+# 工具函数
+# ---------------------------------------------------------------------------
+
+
+def get_exe_path():
+    """获取当前可执行文件的完整路径"""
+    if getattr(sys, "frozen", False):
+        return os.path.abspath(sys.executable)
+    return os.path.abspath(__file__)
+
+
+def is_frozen():
+    """是否在 PyInstaller 打包环境中运行"""
+    return getattr(sys, "frozen", False)
+
+
+def ensure_console():
     """
-    使用 Windows schtasks 命令管理开机自启任务
+    在打包无窗口模式下分配控制台窗口。
     """
+    if not is_frozen():
+        return
 
-    TASK_NAME = "DailyBotAutoStart"
+    ATTACH_PARENT_PROCESS = -1
+    # 尝试附加到父进程的控制台（如在 cmd 或 PowerShell 中运行）
+    # 如果失败（例如由任务计划程序启动），则独立分配一个新窗口
+    if ctypes.windll.kernel32.AttachConsole(ATTACH_PARENT_PROCESS) == 0:
+        ctypes.windll.kernel32.AllocConsole()
 
-    @classmethod
-    def setup(cls, auto_start: bool):
-        """
-        根据配置启用或禁用开机自启
-        """
-        if auto_start:
-            # 优先尝试计划任务，失败则回退到启动文件夹
-            if not cls._create_task():
-                cls._create_startup_shortcut()
-        else:
-            cls._delete_task()
-            cls._delete_startup_shortcut()
+    ctypes.windll.kernel32.SetConsoleTitleW("DailyBot")
+    # 设置控制台代码页为 UTF-8 防止乱码
+    ctypes.windll.kernel32.SetConsoleOutputCP(65001)
 
-    @classmethod
-    def _create_task(cls):
-        """
-        创建登录时启动的任务
-        """
-        app_dir = get_app_dir()
-        bat_path = os.path.join(app_dir, "scripts", "DailyBot.bat")
-        powershell_cmd = f"powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -Command \"& '{bat_path}' --service\""
+    # 启用 ANSI 颜色支持 (ENABLE_VIRTUAL_TERMINAL_PROCESSING)
+    STD_OUTPUT_HANDLE = -11
+    handle = ctypes.windll.kernel32.GetStdHandle(STD_OUTPUT_HANDLE)
+    mode = ctypes.c_ulong()
+    if ctypes.windll.kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+        ctypes.windll.kernel32.SetConsoleMode(handle, mode.value | 0x0004)
 
-        cmd = [
-            "schtasks",
-            "/Create",
-            "/SC",
-            "ONLOGON",
-            "/TN",
-            cls.TASK_NAME,
-            "/TR",
-            powershell_cmd,
-            "/F",
-        ]
-
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-            if result.returncode == 0:
-                logger.info(f"已成功创建 Windows 计划任务: {cls.TASK_NAME}")
-                return True
-            else:
-                stderr_msg = result.stderr.strip()
-                if "Access is denied" in stderr_msg:
-                    logger.debug(
-                        "权限不足，无法创建计划任务(schtasks)，将自动使用启动文件夹替代方案。"
-                    )
-                else:
-                    logger.debug(f"计划任务创建受阻: {stderr_msg}")
-                return False
-        except Exception:
-            return False
-
-    @classmethod
-    def _create_startup_shortcut(cls):
-        """
-        回退方案：在 Windows 启动文件夹创建快捷方式
-        """
-        try:
-            app_dir = get_app_dir()
-            startup_path = winshell.startup()
-            shortcut_path = os.path.join(startup_path, f"{cls.TASK_NAME}.lnk")
-
-            # 寻找 pythonw.exe
-            python_exe = sys.executable
-            pythonw_exe = python_exe.lower().replace("python.exe", "pythonw.exe")
-            if not os.path.exists(pythonw_exe):
-                pythonw_exe = python_exe
-
-            shell = Dispatch("WScript.Shell")
-            shortcut = shell.CreateShortCut(shortcut_path)
-            shortcut.Targetpath = pythonw_exe
-            # 运行当前脚本并带上 --service 参数
-            shortcut.Arguments = f'"{os.path.abspath(__file__)}" --service'
-            shortcut.WorkingDirectory = app_dir
-            shortcut.WindowStyle = 7  # Minimized/Hidden style
-            shortcut.save()
-            logger.info(f"已通过启动文件夹实现开机自启: {shortcut_path}")
-            return True
-        except Exception as e:
-            logger.error(f"所有开机自启方案均失败: {e}")
-            return False
-
-    @classmethod
-    def _delete_task(cls):
-        """
-        删除计划任务
-        """
-        cmd = ["schtasks", "/Delete", "/TN", cls.TASK_NAME, "/F"]
-        try:
-            subprocess.run(cmd, capture_output=True, text=True, check=False)
-        except Exception:
-            pass
-
-    @classmethod
-    def _delete_startup_shortcut(cls):
-        """
-        删除启动文件夹中的快捷方式
-        """
-        try:
-            startup_path = winshell.startup()
-            shortcut_path = os.path.join(startup_path, f"{cls.TASK_NAME}.lnk")
-            if os.path.exists(shortcut_path):
-                os.remove(shortcut_path)
-                logger.info("已移除启动文件夹中的自启快捷方式。")
-        except Exception:
-            pass
+    # 重新绑定标准 I/O 到控制台
+    sys.stdout = open("CONOUT$", "w", encoding="utf-8")
+    sys.stderr = open("CONOUT$", "w", encoding="utf-8")
+    sys.stdin = open("CONIN$", "r", encoding="utf-8")
 
 
-class SchedulerEngine:
-    """
-    调度引擎：负责时间匹配与任务触发
-    """
+def setup_logging():
+    """配置调度器专用日志（写入文件，不依赖业务层的 loguru）"""
+    log_dir = os.path.join(get_app_dir(), "logs")
+    os.makedirs(log_dir, exist_ok=True)
 
-    def __init__(self):
-        self.last_executed_date = ""
-        self.last_executed_time = ""
-        self.pid_file = os.path.join(get_app_dir(), "logs", "scheduler.pid")
+    log_file = os.path.join(log_dir, "scheduler.log")
 
-    def _acquire_lock(self):
-        """
-        单例保护：确保只有一个调度进程
-        """
-        os.makedirs(os.path.dirname(self.pid_file), exist_ok=True)
-        if os.path.exists(self.pid_file):
-            try:
-                with open(self.pid_file, "r") as f:
-                    old_pid = int(f.read().strip())
+    # 防止重复添加 handler
+    logger = logging.getLogger("DailyBot.Scheduler")
+    if not logger.handlers:
+        logger.setLevel(logging.DEBUG)
 
-                if psutil.pid_exists(old_pid):
-                    proc = psutil.Process(old_pid)
-                    cmdline = " ".join(proc.cmdline())
-                    if "dailybot_scheduler" in cmdline:
-                        logger.warning(
-                            f"检测到已有调度进程正在运行 (PID: {old_pid})，程序退出。"
-                        )
-                        return False
+        file_handler = logging.FileHandler(log_file, encoding="utf-8")
+        file_handler.setLevel(logging.DEBUG)
+        file_handler.setFormatter(
+            logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+        )
+        logger.addHandler(file_handler)
 
-                # 如果 PID 不存在，则是僵尸锁
-                os.remove(self.pid_file)
-            except Exception:
-                pass
+    return logger
 
-        with open(self.pid_file, "w") as f:
-            f.write(str(os.getpid()))
 
-        atexit.register(self._release_lock)
+def load_scheduler_config():
+    """加载 config.yaml 中的 scheduler 配置段"""
+    from common import config
+
+    scheduler = config.get("scheduler", {})
+    return {
+        "enabled": scheduler.get("enabled", False),
+        "auto_start": scheduler.get("auto_start", False),
+        "default_time": scheduler.get("default_time", "18:00"),
+        "tasks": scheduler.get("tasks") or [],
+    }
+
+
+# ---------------------------------------------------------------------------
+# 注册表管理（开机自启动）
+# ---------------------------------------------------------------------------
+
+
+def register_startup(exe_path, log):
+    """将 DailyBot 写入注册表实现开机自启动"""
+    try:
+        key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            REGISTRY_KEY_PATH,
+            0,
+            winreg.KEY_SET_VALUE,
+        )
+        winreg.SetValueEx(key, REGISTRY_VALUE_NAME, 0, winreg.REG_SZ, f'"{exe_path}"')
+        winreg.CloseKey(key)
+        log.info(f"✅ 已注册开机自启动: {exe_path}")
         return True
+    except Exception as e:
+        log.error(f"❌ 注册开机自启动失败: {e}")
+        return False
 
-    def _release_lock(self):
-        """
-        释放 PID 锁
-        """
-        if os.path.exists(self.pid_file):
-            try:
-                with open(self.pid_file, "r") as f:
-                    pid = int(f.read().strip())
-                if pid == os.getpid():
-                    os.remove(self.pid_file)
-                    logger.info("已释放 PID 锁文件。")
-            except:
-                pass
 
-    def _get_today_tasks(self):
-        """
-        解析 config.yaml，获取今日有效的时间点
-        """
-        sc = config.get("scheduler", {})
-        tasks = sc.get("tasks", [])
-        default_time = sc.get("default_time", "18:20")
+def remove_startup(log):
+    """从注册表中删除 DailyBot 开机自启动项"""
+    try:
+        key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            REGISTRY_KEY_PATH,
+            0,
+            winreg.KEY_SET_VALUE,
+        )
+        winreg.DeleteValue(key, REGISTRY_VALUE_NAME)
+        winreg.CloseKey(key)
+        log.info("✅ 已移除开机自启动")
+        return True
+    except FileNotFoundError:
+        log.info("ℹ️ 开机自启动项不存在，无需移除")
+        return True
+    except Exception as e:
+        log.error(f"❌ 移除开机自启动失败: {e}")
+        return False
 
-        now = datetime.now()
-        today_str = now.strftime("%Y-%m-%d")
-        weekday = now.isoweekday()
 
-        scheduled_times = set()
-        for t in tasks:
-            match_date = False
-            if "dates" in t and today_str in t["dates"]:
-                match_date = True
-            if "weekdays" in t and weekday in t["weekdays"]:
-                match_date = True
-            if "dates" not in t and "weekdays" not in t:
-                match_date = True
+def check_startup():
+    """检查开机自启动注册表项，返回已注册的值或 None"""
+    try:
+        key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER, REGISTRY_KEY_PATH, 0, winreg.KEY_READ
+        )
+        value, _ = winreg.QueryValueEx(key, REGISTRY_VALUE_NAME)
+        winreg.CloseKey(key)
+        return value
+    except FileNotFoundError:
+        return None
+    except Exception:
+        return None
 
-            if match_date:
-                scheduled_times.add(t.get("time", default_time))
 
-        if not scheduled_times:
-            scheduled_times.add(default_time)
+# ---------------------------------------------------------------------------
+# schtasks 管理（定时触发）
+# ---------------------------------------------------------------------------
 
-        return sorted(list(scheduled_times))
 
-    def _trigger_main(self):
-        """
-        调用主程序
-        """
-        logger.info("[触发] 满足定时规则，正在启动 DailyBot 主流程...")
-        try:
-            app_dir = get_app_dir()
-            python_exe = os.path.join(app_dir, ".venv", "Scripts", "python.exe")
-            if not os.path.exists(python_exe):
-                python_exe = sys.executable
+def get_registered_task_names():
+    """查询所有已注册的 DailyBot schtasks 任务名"""
+    try:
+        result = subprocess.run(
+            ["schtasks", "/query", "/fo", "CSV", "/nh"],
+            capture_output=True,
+            text=True,
+            encoding="gbk",
+        )
+        task_names = []
+        for line in result.stdout.strip().split("\n"):
+            if not line or TASK_NAME_PREFIX not in line:
+                continue
+            # CSV 格式: "\\任务名","下次运行时间","状态"
+            raw_name = line.split(",")[0].strip('"')
+            # 去掉前导的 \\ 前缀
+            name = raw_name.lstrip("\\")
+            if name.startswith(TASK_NAME_PREFIX):
+                task_names.append(name)
+        return task_names
+    except Exception:
+        return []
 
-            subprocess.Popen(
-                [python_exe, "main.py"],
-                cwd=app_dir,
-                creationflags=0x00000008 | 0x08000000,
+
+def remove_task(task_name, log):
+    """删除单个 schtasks 任务"""
+    try:
+        result = subprocess.run(
+            f'schtasks /delete /tn "{task_name}" /f',
+            shell=True,
+            capture_output=True,
+            text=True,
+            encoding="gbk",
+        )
+        if result.returncode == 0:
+            log.info(f"✅ 已删除定时任务: {task_name}")
+            return True
+        log.warning(f"⚠️ 删除任务 {task_name} 失败: {result.stderr.strip()}")
+        return False
+    except Exception as e:
+        log.error(f"❌ 删除任务 {task_name} 异常: {e}")
+        return False
+
+
+def remove_all_tasks(log):
+    """删除所有以 DailyBot 为前缀的 schtasks 任务"""
+    task_names = get_registered_task_names()
+    for name in task_names:
+        remove_task(name, log)
+    if not task_names:
+        log.info("ℹ️ 没有发现已注册的定时任务")
+
+
+def register_schtask(task_name, time_str, exe_path, log, weekdays=None):
+    """
+    注册单个 schtasks 定时任务。
+
+    :param task_name: 任务名称
+    :param time_str: 触发时间，格式 "HH:MM"
+    :param exe_path: 可执行文件路径
+    :param log: 日志记录器
+    :param weekdays: 可选的工作日列表 [1..7]，为 None 时注册为每天
+    """
+    trigger_cmd = f'\\"{exe_path}\\" --trigger'
+
+    if weekdays:
+        day_str = ",".join(WEEKDAY_MAP[d] for d in sorted(weekdays) if d in WEEKDAY_MAP)
+        cmd = (
+            f'schtasks /create /tn "{task_name}" '
+            f"/sc WEEKLY /d {day_str} /st {time_str} "
+            f'/tr "{trigger_cmd}" /f'
+        )
+        schedule_desc = f"每周 {day_str}"
+    else:
+        cmd = (
+            f'schtasks /create /tn "{task_name}" '
+            f"/sc DAILY /st {time_str} "
+            f'/tr "{trigger_cmd}" /f'
+        )
+        schedule_desc = "每天"
+
+    try:
+        result = subprocess.run(
+            cmd, shell=True, capture_output=True, text=True, encoding="gbk"
+        )
+        if result.returncode == 0:
+            log.info(f"✅ 已注册定时任务: {task_name} ({schedule_desc} {time_str})")
+            return True
+        log.error(f"❌ 注册任务 {task_name} 失败: {result.stderr.strip()}")
+        return False
+    except Exception as e:
+        log.error(f"❌ 注册任务 {task_name} 异常: {e}")
+        return False
+
+
+# ---------------------------------------------------------------------------
+# 配置同步（核心调度编排）
+# ---------------------------------------------------------------------------
+
+
+def sync_tasks(scheduler_config, log):
+    """
+    根据当前 config.yaml 的 scheduler 配置，一次性同步所有定时任务和自启动项。
+
+    策略：先全量清理旧任务 → 再按新配置注册，保证幂等。
+    """
+    enabled = scheduler_config.get("enabled", False)
+    auto_start = scheduler_config.get("auto_start", False)
+    default_time = scheduler_config.get("default_time", "18:00")
+    tasks = scheduler_config.get("tasks") or []
+
+    exe_path = get_exe_path()
+
+    if not enabled:
+        log.info("ℹ️ 调度器已禁用 (scheduler.enabled=false)，清理所有任务")
+        remove_all_tasks(log)
+        remove_startup(log)
+        return
+
+    # 1. 处理开机自启动
+    if auto_start:
+        register_startup(exe_path, log)
+    else:
+        remove_startup(log)
+
+    # 2. 全量清理旧任务后重新注册（保证配置变更实时生效）
+    remove_all_tasks(log)
+
+    # 3. 注册定时任务
+    if not tasks:
+        # 未配置具体任务，使用 default_time 兜底，每天运行
+        register_schtask(f"{TASK_NAME_PREFIX}_Default", default_time, exe_path, log)
+    else:
+        registered_times = set()
+        for idx, task in enumerate(tasks):
+            time_str = task.get("time", default_time)
+            weekdays = task.get("weekdays")
+            task_name = f"{TASK_NAME_PREFIX}_Task_{idx}"
+            register_schtask(task_name, time_str, exe_path, log, weekdays)
+            registered_times.add(time_str)
+
+        # 如果 default_time 未被任何 task 覆盖，额外注册为每日兜底
+        if default_time not in registered_times:
+            register_schtask(
+                f"{TASK_NAME_PREFIX}_Default",
+                default_time,
+                exe_path,
+                log,
             )
-        except Exception as e:
-            logger.error(f"启动主流程失败: {e}")
 
-    def _cleanup_old_process(self):
-        """
-        热重启支持：检测并杀死正在运行的旧后台进程
-        """
-        if not os.path.exists(self.pid_file):
-            return
+    log.info("🎉 定时任务同步完成")
 
-        try:
-            with open(self.pid_file, "r") as f:
-                content = f.read().strip()
-                if not content:
-                    os.remove(self.pid_file)
-                    return
-                old_pid = int(content)
 
-            if psutil.pid_exists(old_pid):
-                proc = psutil.Process(old_pid)
-                cmdline = " ".join(proc.cmdline())
-                if "dailybot_scheduler" in cmdline:
-                    logger.info(
-                        f"检测到正在运行的旧进程 (PID: {old_pid})，正在进行热重启..."
-                    )
-                    proc.terminate()
-                    # 等待进程退出
-                    for _ in range(10):
-                        if not psutil.pid_exists(old_pid):
-                            break
-                        time.sleep(0.5)
-                    if psutil.pid_exists(old_pid):
-                        proc.kill()
-                    logger.info("旧进程已终止。")
+# ---------------------------------------------------------------------------
+# 触发执行（被 schtasks 调用）
+# ---------------------------------------------------------------------------
 
-            # 准备启动新进程前，清理旧 PID 文件
-            if os.path.exists(self.pid_file):
-                os.remove(self.pid_file)
-        except Exception as e:
-            logger.debug(f"清理旧进程时出错: {e}")
-            if os.path.exists(self.pid_file):
-                try:
-                    os.remove(self.pid_file)
-                except:
-                    pass
 
-    def run(self):
-        """
-        主循环
-        """
-        is_service = "--service" in sys.argv
+def execute_trigger(log):
+    """
+    执行 DailyBot 核心业务逻辑。
 
-        # 1. 优先应用自启动配置
-        auto_start = config.get("scheduler.auto_start", False)
-        WindowsTaskScheduler.setup(auto_start)
+    通过 filelock 保证同一时刻只有一个实例在运行，
+    避免多个定时任务同时触发导致的冲突。
+    """
+    from filelock import FileLock, Timeout
 
-        if not is_service:
-            # 手动执行模式：支持热重启逻辑
-            self._cleanup_old_process()
+    lock_path = os.path.join(get_app_dir(), LOCK_FILE_NAME)
+    lock = FileLock(lock_path, timeout=10)
 
-            app_dir = get_app_dir()
-            pythonw_exe = os.path.join(app_dir, ".venv", "Scripts", "pythonw.exe")
-            if not os.path.exists(pythonw_exe):
-                pythonw_exe = sys.executable  # 最终兜底使用 python.exe
+    try:
+        with lock:
+            log.info("🚀 定时任务触发，开始执行核心业务逻辑...")
+            from main import main
 
-            logger.info("正在将调度服务切换至后台运行...")
-            script_path = os.path.abspath(__file__)
-            boot_log = os.path.join(app_dir, "logs", "scheduler_boot.log")
+            asyncio.run(main())
+            log.info("✅ 核心业务逻辑执行完毕")
+    except Timeout:
+        log.warning("⚠️ 另一个 DailyBot 实例正在运行，本次触发跳过")
+    except Exception as e:
+        log.error(f"❌ 业务逻辑执行失败: {e}", exc_info=True)
 
-            # 使用 utf-8-sig (带 BOM) 确保 Windows 记事本等工具不乱码
-            with open(boot_log, "a", encoding="utf-8-sig") as f:
-                f.write(f"\n--- Booting at {datetime.now()} ---\n")
-                f.write(f"PythonW: {pythonw_exe}\n")
-                f.flush()
 
-                subprocess.Popen(
-                    [pythonw_exe, script_path, "--service"],
-                    cwd=app_dir,
-                    stdout=f,
-                    stderr=f,
-                    creationflags=0x00000008 | 0x08000000,
-                )
+# ---------------------------------------------------------------------------
+# 状态查询（交互调试）
+# ---------------------------------------------------------------------------
 
-            logger.info("已成功推送配置并启动后台服务。本窗口将在 3 秒后关闭。")
-            time.sleep(3)
-            sys.exit(0)
 
-        # 2. 以下为 --service 服务模式逻辑
-        if not self._acquire_lock():
-            sys.exit(0)
+def show_status(scheduler_config):
+    """在控制台中打印当前调度器的完整状态信息（配置 + 注册表 + 定时任务）"""
+    enabled = scheduler_config.get("enabled", False)
+    auto_start = scheduler_config.get("auto_start", False)
+    default_time = scheduler_config.get("default_time", "N/A")
+    tasks = scheduler_config.get("tasks") or []
 
-        logger.info("调度引擎已启动 (后台服务)，进入任务监听状态...")
+    print("=" * 60)
+    print("  DailyBot 调度器状态")
+    print("=" * 60)
 
-        while True:
-            try:
-                now = datetime.now()
-                today_str = now.strftime("%Y-%m-%d")
-                curr_time_str = now.strftime("%H:%M")
+    # --- 配置 ---
+    print(f"\n📋 配置:")
+    print(f"  scheduler.enabled:      {enabled}")
+    print(f"  scheduler.auto_start:   {auto_start}")
+    print(f"  scheduler.default_time: {default_time}")
+    print(f"  scheduler.tasks:        {len(tasks)} 个")
+    for idx, task in enumerate(tasks):
+        weekdays = task.get("weekdays") or []
+        dates = task.get("dates") or []
+        wd_str = (
+            ", ".join(WEEKDAY_LABEL.get(d, "?") for d in weekdays)
+            if weekdays
+            else "每天"
+        )
+        dt_str = ", ".join(dates) if dates else "无"
+        print(
+            f"    [{idx}] 时间={task.get('time', 'N/A')}  "
+            f"工作日={wd_str}  日期={dt_str}"
+        )
 
-                target_times = self._get_today_tasks()
+    # --- 开机自启动 ---
+    startup_value = check_startup()
+    print(f"\n🔑 开机自启动:")
+    if startup_value:
+        print(f"  ✅ 已注册: {startup_value}")
+    else:
+        print(f"  ❌ 未注册")
 
-                if curr_time_str in target_times:
-                    if (
-                        self.last_executed_date != today_str
-                        or self.last_executed_time != curr_time_str
-                    ):
-                        self._trigger_main()
-                        self.last_executed_date = today_str
-                        self.last_executed_time = curr_time_str
+    # --- 定时任务 ---
+    task_names = get_registered_task_names()
+    print(f"\n⏰ 已注册的定时任务:")
+    if task_names:
+        for name in task_names:
+            print(f"  ✅ {name}")
+    else:
+        print(f"  ❌ 无已注册的定时任务")
 
-                time.sleep(30)
-            except KeyboardInterrupt:
-                break
-            except Exception as e:
-                logger.error(f"调度循环发生异常: {e}")
-                time.sleep(60)
+    # --- 运行环境 ---
+    print(f"\n🖥️ 运行环境:")
+    print(f"  打包模式: {'是' if is_frozen() else '否 (源码模式)'}")
+    print(f"  可执行路径: {get_exe_path()}")
+    print(f"  工作目录:   {get_app_dir()}")
+
+    print("\n" + "=" * 60)
+
+    # 打包模式下暂停，让用户看到输出
+    if is_frozen():
+        input("\n按 Enter 键关闭...")
+
+
+# ---------------------------------------------------------------------------
+# 卸载
+# ---------------------------------------------------------------------------
+
+
+def do_uninstall(log):
+    """清理所有已注册的定时任务和自启动项"""
+    log.info("🗑️ 正在卸载所有 DailyBot 定时任务...")
+    remove_all_tasks(log)
+    remove_startup(log)
+
+    print("✅ 已清理所有 DailyBot 定时任务和自启动项")
+    log.info("✅ 卸载完成")
+
+    if is_frozen():
+        input("\n按 Enter 键关闭...")
+
+
+# ---------------------------------------------------------------------------
+# 入口
+# ---------------------------------------------------------------------------
+
+
+def main():
+    # schtasks 启动时默认在 system32，必须切换到 exe 所在目录
+    os.chdir(get_app_dir())
+
+    parser = argparse.ArgumentParser(description="DailyBot 定时调度器")
+    parser.add_argument(
+        "--trigger",
+        action="store_true",
+        help="执行核心业务逻辑（由定时任务调用）",
+    )
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="查看当前任务注册状态",
+    )
+    parser.add_argument(
+        "--uninstall",
+        action="store_true",
+        help="清理所有已注册的任务和自启动",
+    )
+    args = parser.parse_args()
+
+    if args.trigger or args.status or args.uninstall:
+        ensure_console()
+
+    log = setup_logging()
+    scheduler_config = load_scheduler_config()
+
+    if args.trigger:
+        execute_trigger(log)
+    elif args.status:
+        show_status(scheduler_config)
+    elif args.uninstall:
+        do_uninstall(log)
+    else:
+        # 默认模式：静默同步配置后退出
+        log.info("🔄 开始同步调度器配置...")
+        sync_tasks(scheduler_config, log)
 
 
 if __name__ == "__main__":
-    import common.logger
-
-    engine = SchedulerEngine()
-    engine.run()
+    main()

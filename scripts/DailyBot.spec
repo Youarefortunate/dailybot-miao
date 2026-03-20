@@ -2,7 +2,8 @@ import os
 import site
 
 # 获取当前环境的 site-packages 路径
-site_packages = site.getsitepackages()[0]
+site_packages = [p for p in site.getsitepackages() if 'site-packages' in p]
+site_packages = site_packages[0] if site_packages else site.getsitepackages()[0]
 
 block_cipher = None
 
@@ -29,6 +30,7 @@ added_files = [
 
 # 隐藏导入列表 (PyInstaller 无法自动识别的动态导入)
 hidden_imports = [
+    'main',
     'crawlers.impl',
     'rpa.impl',
     'workflows.impl',
@@ -43,7 +45,7 @@ hidden_imports = [
 ]
 
 a = Analysis(
-    ['../main.py'],
+    ['../dailybot_scheduler.py'],
     pathex=[],
     binaries=[],
     datas=added_files,
@@ -74,7 +76,7 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
