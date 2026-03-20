@@ -67,33 +67,33 @@ graph TD
         CL <-->|Matching & Thinking| SKILL
         CL <-->|Invoke & Control| MCP_S
         
-        USER[用户双击 DailyBot.bat] -->|脚本运行| SCHEDULER
-        EXE_USER[用户双击 DailyBot.exe] -->|单体运行| SCHEDULER
-        WIN_STARTUP[Windows 开机自启] -->|自动运行| SCHEDULER
+        USER[用户双击 DailyBot.bat] -->|更新配置并退出| SCHEDULER
+        EXE_USER[用户双击 DailyBot.exe] -->|更新配置并退出| SCHEDULER
+        WIN_STARTUP[Windows 开机自启] -->|无感更新并退出| SCHEDULER
         
         MCP_S -->|Execution Trigger| START
     end
 
-    subgraph SCHED_SUB ["<span style='color:black;font-weight:bold'>1. 定时与守护进程 (Scheduler Layer)</span>"]
-        CONFIG_S[加载 scheduler 配置] --> SCHEDULER[dailybot_scheduler.py]
-        SCHEDULER --> LOCK[单例检测 & 进程锁]
-        LOCK -->|检测到旧进程| KILL[自动清除旧实例]
-        KILL --> SERVICE[启动 轮询/任务 调度服务]
-        LOCK -->|无运行实例| SERVICE
-        SERVICE -->|基于 tasks/default_time 触发| START
+    subgraph SCHED_SUB ["<span style='color:black;font-weight:bold'>1. 原生定时任务流 (Scheduler Layer)</span>"]
+        CONFIG_S["加载 config.yaml 配置"] --> SCHEDULER["dailybot_scheduler.py"]
+        SCHEDULER -->|"先清理旧配置"| WIN_SCHED["向 Windows 系统注册日历闹钟"]
+        WIN_SCHED -.->|"触发到达执行刻度"| SYSTEM_EXEC["--trigger 系统唤醒服务"]
+        SYSTEM_EXEC --> LOCK["单例检测 & 进程防重锁"]
+        LOCK -->|"检测到冲突锁退出"| ABORT["终止本次执行"]
+        LOCK -->|"无运行实例 / 获取锁"| START
     end
 
     subgraph CHECKER ["<span style='color:black;font-weight:bold'>2. 环境自检 (System Checker)</span>"]
         START[程序启动] --> ENV[Playwright 驱动检测]
         ENV -->|未就绪| INSTALL[自动补全 Chromium]
-        ENV & INSTALL --> OAUTH_CHECK{各平台 OAuth 授权检测}
+        ENV & INSTALL --> OAUTH_CHECK{"各平台 OAuth 授权检测 (以飞书为例)"}
     end
 
     subgraph OAUTH_SUB ["<span style='color:black;font-weight:bold'>3. OAuth 流程 (Auth Layer)</span>"]
-        OAUTH_CHECK -->|检出过期| FS_CHECK[飞书 Token 有效性校验]
-        FS_CHECK -->|过期且可刷新| FS_REFRESH[飞书 无感刷新 Refresh Token]
-        FS_REFRESH -->|刷新失败 / 无凭据| FS_CARD[发送飞书单聊授权卡片]
-        FS_CARD -->|用户点击卡片授权| FS_SUCCESS[更新凭据 & 自动重试工作流]
+        OAUTH_CHECK -->|"检出过期"| FS_CHECK["飞书 Token 有效性校验"]
+        FS_CHECK -->|"过期且可刷新"| FS_REFRESH["飞书 无感刷新 Refresh Token"]
+        FS_REFRESH -->|"刷新失败 / 无凭据"| FS_CARD["发送飞书单聊授权卡片"]
+        FS_CARD -->|"用户点击卡片授权"| FS_SUCCESS["更新凭据 & 自动重试工作流"]
     end
 
     subgraph CRAWLERS ["<span style='color:black;font-weight:bold'>4. 智能采集 (Crawlers Layer)</span>"]
@@ -172,64 +172,52 @@ DailyBot/
 └── utils/               # 🔧 通用工具：动态模块发现器 (DynamicManager) 与路径助手
 ```
 
+## 📦 项目打包 (EXE 单文件)
+
+### 1. 一键构建与编译
+
+只需通过项目中内置的自动化脚本即可重新进行编译发布：
+
+- **标准打包**: 在 Windows 下，直接双击运行根目录的 `scripts\build.bat`。
+- **清理重置**: 为清除历史构建缓存残余，请在终端中执行 `.\scripts\build.bat --clean` 获取纯净的编译效果。
+- **手动打包**: 
+  
+  ```bash
+  pyinstaller scripts/DailyBot.spec --clean --noconfirm
+  ```
 ---
 
-## 🏗️ Fix(有Bug): 极致打包与分发 (EXE)
+## ⏰ 定时任务 (Windows)
 
-日报喵支持**单体 EXE 极致分发方案**：
+### 1. 极简配置驱动
 
-### 1. 傻瓜式运行
-- **免安装环境**：生成的 `DailyBot.exe` 可以在未部署 Python 的环境下直接运行。
-- **自动初始化**：程序内置浏览器环境自检。如果开启了 RPA 填报但缺少驱动，**程序会在首次启动时自动通过后台下载安装 Chromium**，实现真正的“开箱即用”。
-
-### 2. 如何打包？
-如果您进行了二次开发，可以直接双击运行一键打包脚本：
-
-**Windows 一键打包 (推荐)**:
-- **操作**: 直接双击 `scripts/build.bat`。
-- **功能**: 
-    - 自动激活虚拟环境。
-    - 自动检测并安装 PyInstaller（若缺失，执行 `pip install -r requirements.txt`）。
-    - 默认保留 `build` 目录以便调试；若需清理，可在终端运行 `scripts/build.bat --clean`。
-    - 生成完成后，成品将位于 `dist/` 目录。
-
-**手动打包指令**:
-```bash
-# 执行一键打包逻辑 (配置文件已整理至 scripts 目录)
-pyinstaller scripts/DailyBot.spec --clean --noconfirm
+一切行为仅受 `config.yaml` 驱动：
+```yaml
+scheduler:
+  enabled: true       # 开启此项，系统才会在特定时间自动唤醒程序
+  auto_start: true    # 开启此项，每次电脑开机时会隐形自动同步最新定时状态
+  default_time: "18:20" # 每天雷打不动下班推送的时间点
+  tasks:              # 进阶玩法：支持精细化周频调度
+    - time: "18:30"                   
+      weekdays: [1, 2, 3, 4, 5]        # 只有工作日一到五推送
+    # - xxx # 可以继续定义
 ```
-成品将生成在 `dist/` 目录下，包含 `DailyBot.exe` 及必需的配置模板。
 
----
+### 2. 配置生效方式
 
-## ⏰ Fix(有Bug): 自启动与后台运行 (Windows)
+当您修改了 `config.yaml` 之后：
+**只需重新双击运行一次** `DailyBot.exe`（开发环境下运行 `python dailybot_scheduler.py`）。程序会静默启动，将最新定时状态同步覆写到 Windows 底层，随后立刻退出，**新的执行计划即行生效**。
 
-日报喵针对 Windows 用户提供了**极致简化**的自启动与后台运行方案，确保你的日报任务在开机后自动、静和准时地执行。
+### 3. 可选命令行参数
 
-### 1. 核心入口：`scripts/DailyBot.bat`
+如果需要进行运行维护或高级操作，您可以在终端中带参数运行 `DailyBot.exe`：
 
-- **唯一操作点**：这是项目唯一的运行入口脚本。
-- **功能**：自动激活虚拟环境、启动调度服务，并根据 `config.yaml` 自动同步 Windows 自启动状态。
-
-### 2. 开启自启动
-1. 打开 `config/config.yaml`。
-2. 将 `scheduler.auto_start` 设置为 `true`。
-3. 双击运行 `scripts/DailyBot.bat`。
-
-**✨ 即时生效特性**：
-- 当你开启 `auto_start` 并运行脚本时，程序会立即为您在后台拉起一个**静默运行**的服务实例。
-
-### 3. 关闭自启动
-
-1. 将 `config/config.yaml` 中的 `auto_start` 修改为 `false`。
-2. 再次双击运行 `scripts/DailyBot.bat`。
-3. 系统将自动移除 Windows 启动文件夹中的 `DailyBotScheduler` 快捷方式。
-- *提示：若需彻底结束当前正在后台运行的实例，请在任务管理器中手动结束 Python 进程。*
-
-### 4. 更改定时配置
-
-1. 当你手动修改`config.yaml`或者`.env`文件里面的配置时并且你想这个windows定时任务按照最新的配置执行，你需要重新双击运行`scripts/DailyBot.bat`脚本，这将会将之前的旧进程杀死，重新创建一个按照目前最新配置的新进程
-2. 每次创建一个进程就会在`logs/.scheduler.lock`里面显示创建的进程`PID`，此外还可以查看`logs/run_dailybot_error.log`查看每次命令启动的日志
+| 启动参数 | 核心功能 | 适用场景 |
+| :--- | :--- | :--- |
+| **(无参数默认双击)** | **更新与同步配置** | 修改 `config.yaml` 后，用于将最新时间参数同步更新至系统中。 |
+| `--status` | **查看运行状态** | 弹出一个控制台面板，详细打印当前电脑中已注册的所有触发点及自启状态。 |
+| `--uninstall` | **清理与反注册** | 彻底移除系统任务计划程序中的 DailyBot 相关任务，取消开机自启。 |
+| `--trigger` | **立即触发执行** | 无视定时约束，强制立即执行一次数据采集、AI 总结与推送（此参数默认由系统按时自动调用）。 |
 
 ---
 
