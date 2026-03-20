@@ -1,0 +1,25 @@
+# .github/release.yml
+changelog:
+  categories:
+    - title: "🚀 Features"
+      labels:
+        - "feat"
+        - "feature"
+    - title: "🐛 Bug Fixes"
+      labels:
+        - "fix"
+        - "bug"
+    - title: "📦 Build & Chore"
+      labels:
+        - "chore"
+        - "build"
+        - "ci"
+    - title: "📝 Documentation"
+      labels:
+        - "docs"
+        - "documentation"
+  exclude:
+    labels:
+      - "ignore"
+    authors:
+      - "dependabot"

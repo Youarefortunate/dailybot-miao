@@ -15,6 +15,9 @@ class Config:
     初始化逻辑在构造函数中自动执行。
     """
 
+    # 项目版本号
+    VERSION = "1.1.2"
+
     # 映射环境变量时自动忽略的顶层 YAML 键名
     IGNORE_CATEGORY_KEYS = ["platforms", "models", "crawler_sources"]
 

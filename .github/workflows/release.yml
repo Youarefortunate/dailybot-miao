@@ -1,0 +1,111 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*' # 触发条件：推送以 v 开头的标签，如 v1.1.2
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build and Release for Windows
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 获取完整历史以生成 Changelog
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller playwright-stealth
+
+      - name: Install Playwright Browsers
+        run: |
+          python -m playwright install chromium
+
+      - name: Build with PyInstaller
+        id: build
+        run: |
+          # 动态获取 site-packages 路径以替换 .spec 中的绝对路径
+          $SITE_PACKAGES = python -c "import site; print(site.getsitepackages()[0])"
+          echo "Site Packages Path: $SITE_PACKAGES"
+          
+          # 获取版本号 (从标签中提取)
+          $VERSION = "${{ github.ref_name }}".TrimStart('v')
+          echo "Building Version: $VERSION"
+          echo "version=$VERSION" >> $env:GITHUB_OUTPUT
+
+          # 运行构建
+          pyinstaller scripts/DailyBot.spec --noconfirm
+
+      - name: Prepare Release Package
+        shell: pwsh
+        run: |
+          $VERSION = "${{ steps.build.outputs.version }}"
+          $DIST_DIR = "dist"
+          $PKG_NAME = "DailyBot-v$VERSION-windows"
+          $PKG_ZIP = "$PKG_NAME.zip"
+          
+          echo "Creating package: $PKG_ZIP"
+          
+          # 创建临时目录
+          New-Item -ItemType Directory -Force -Path "release_temp"
+          
+          # 拷贝必要文件 (exe, config, env template)
+          Copy-Item "$DIST_DIR/DailyBot.exe" -Destination "release_temp/"
+          Copy-Item "config/config.yaml" -Destination "release_temp/"
+          Copy-Item ".env" -Destination "release_temp/.env.example"
+          
+          # 压缩
+          Compress-Archive -Path "release_temp/*" -DestinationPath "$PKG_ZIP"
+          
+          # 计算校验和
+          $EXE_SHA = (Get-FileHash "$DIST_DIR/DailyBot.exe" -Algorithm SHA256).Hash
+          $ZIP_SHA = (Get-FileHash "$PKG_ZIP" -Algorithm SHA256).Hash
+          
+          echo "DailyBot.exe SHA256: $EXE_SHA" > checksums.txt
+          echo "$PKG_ZIP SHA256: $ZIP_SHA" >> checksums.txt
+          
+          echo "pkg_zip=$PKG_ZIP" >> $env:GITHUB_OUTPUT
+
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            dist/DailyBot.exe
+            *.zip
+            checksums.txt
+          name: DailyBot ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            ## 📦 发布摘要
+            本项目已发布新版本 `${{ github.ref_name }}`。
+            
+            ### 🛠 构建信息
+            - **版本号**: `${{ steps.build.outputs.version }}`
+            - **构建平台**: `Windows (GitHub Actions)`
+            - **构建时间**: ${{ github.event.head_commit.timestamp || env.GITHUB_RUN_ID }}
+            
+            ### 📝 变更日志
+            请查看下方的 [自动生成日志] 或 [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)。
+            
+            ---
+            *(校验和已包含在附件 `checksums.txt` 中)*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

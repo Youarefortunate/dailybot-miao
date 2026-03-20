@@ -1,0 +1,37 @@
+name: Update Changelog
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  update-changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Update CHANGELOG.md
+        shell: bash
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          BODY="${{ github.event.release.body }}"
+          DATE=$(date +%Y-%m-%d)
+          
+          # 构造新的变更内容
+          NEW_CONTENT="## [$VERSION] - $DATE\n\n$BODY\n\n"
+          
+          # 将新内容插入到标题之后（假设第一行是 # Changelog）
+          sed -i "3i $NEW_CONTENT" CHANGELOG.md
+          
+          # 提交更改
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "docs: update CHANGELOG.md for $VERSION [skip ci]"
+          git push
