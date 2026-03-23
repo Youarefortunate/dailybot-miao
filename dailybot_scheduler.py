@@ -131,6 +131,7 @@ def load_scheduler_config():
     return {
         "enabled": scheduler.get("enabled", False),
         "auto_start": scheduler.get("auto_start", False),
+        "auto_path": scheduler.get("auto_path", False),
         "default_time": scheduler.get("default_time", "18:00"),
         "tasks": scheduler.get("tasks") or [],
     }
@@ -178,6 +179,76 @@ def remove_startup(log):
     except Exception as e:
         log.error(f"❌ 移除开机自启动失败: {e}")
         return False
+
+
+# ---------------------------------------------------------------------------
+# 环境变量管理（全局指令支持）
+# ---------------------------------------------------------------------------
+
+
+def notify_environment_change():
+    """广播环境变更消息，使新开启的终端即时生效"""
+    try:
+        HWND_BROADCAST = 0xFFFF
+        WM_SETTINGCHANGE = 0x001A
+        ctypes.windll.user32.SendMessageTimeoutW(
+            HWND_BROADCAST,
+            WM_SETTINGCHANGE,
+            0,
+            "Environment",
+            0x0002,
+            1000,
+            ctypes.byref(ctypes.c_size_t()),
+        )
+    except Exception:
+        pass
+
+
+def register_path_to_user_env(log):
+    """将程序所在目录添加到用户 PATH 环境变量中"""
+    app_dir = get_app_dir()
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER, "Environment", 0, winreg.KEY_ALL_ACCESS
+        ) as key:
+            try:
+                current_path, _ = winreg.QueryValueEx(key, "Path")
+            except FileNotFoundError:
+                current_path = ""
+
+            paths = [p.strip() for p in current_path.split(";") if p.strip()]
+            if app_dir not in paths:
+                new_path = ";".join(paths + [app_dir])
+                winreg.SetValueEx(key, "Path", 0, winreg.REG_EXPAND_SZ, new_path)
+                log.info(f"✅ 已自动将路径添加至用户 PATH: {app_dir}")
+                notify_environment_change()
+            else:
+                log.debug("ℹ️ 路径已存在于用户 PATH 中")
+    except Exception as e:
+        log.error(f"❌ 自动添加 PATH 失败: {e}")
+
+
+def remove_path_from_user_env(log):
+    """从用户 PATH 环境变量中移除程序所在目录"""
+    app_dir = get_app_dir()
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER, "Environment", 0, winreg.KEY_ALL_ACCESS
+        ) as key:
+            try:
+                current_path, _ = winreg.QueryValueEx(key, "Path")
+            except FileNotFoundError:
+                return
+
+            paths = [p.strip() for p in current_path.split(";") if p.strip()]
+            if app_dir in paths:
+                paths.remove(app_dir)
+                new_path = ";".join(paths)
+                winreg.SetValueEx(key, "Path", 0, winreg.REG_EXPAND_SZ, new_path)
+                log.info(f"✅ 已从用户 PATH 中移除路径: {app_dir}")
+                notify_environment_change()
+    except Exception as e:
+        log.error(f"❌ 移除 PATH 失败: {e}")
 
 
 def check_startup():
@@ -256,38 +327,43 @@ def remove_all_tasks(log):
 def register_schtask(task_name, time_str, exe_path, log, weekdays=None):
     """
     注册单个 schtasks 定时任务。
-
-    :param task_name: 任务名称
-    :param time_str: 触发时间，格式 "HH:MM"
-    :param exe_path: 可执行文件路径
-    :param log: 日志记录器
-    :param weekdays: 可选的工作日列表 [1..7]，为 None 时注册为每天
     """
-    trigger_cmd = f'\\"{exe_path}\\" --trigger'
-
-    if weekdays:
-        day_str = ",".join(WEEKDAY_MAP[d] for d in sorted(weekdays) if d in WEEKDAY_MAP)
-        cmd = (
-            f'schtasks /create /tn "{task_name}" '
-            f"/sc WEEKLY /d {day_str} /st {time_str} "
-            f'/tr "{trigger_cmd}" /f'
-        )
-        schedule_desc = f"每周 {day_str}"
-    else:
-        cmd = (
-            f'schtasks /create /tn "{task_name}" '
-            f"/sc DAILY /st {time_str} "
-            f'/tr "{trigger_cmd}" /f'
-        )
-        schedule_desc = "每天"
-
     try:
+        # 1. 时间格式标准化 (例如 9:30 -> 09:30)
+        if ":" in time_str:
+            h, m = time_str.split(":")
+            time_str = f"{int(h):02d}:{int(m):02d}"
+
+        # 2. 构造命令
+        trigger_cmd = f'\\"{exe_path}\\" --trigger'
+        if weekdays:
+            day_str = ",".join(
+                WEEKDAY_MAP[d] for d in sorted(weekdays) if d in WEEKDAY_MAP
+            )
+            cmd = (
+                f'schtasks /create /tn "{task_name}" '
+                f"/sc WEEKLY /d {day_str} /st {time_str} "
+                f'/tr "{trigger_cmd}" /f'
+            )
+            schedule_desc = f"每周 {day_str}"
+        else:
+            cmd = (
+                f'schtasks /create /tn "{task_name}" '
+                f"/sc DAILY /st {time_str} "
+                f'/tr "{trigger_cmd}" /f'
+            )
+            schedule_desc = "每天"
+
+        # 3. 执行注册
+        log.debug(f"正在执行命令: {cmd}")
         result = subprocess.run(
             cmd, shell=True, capture_output=True, text=True, encoding="gbk"
         )
+
         if result.returncode == 0:
             log.info(f"✅ 已注册定时任务: {task_name} ({schedule_desc} {time_str})")
             return True
+
         log.error(f"❌ 注册任务 {task_name} 失败: {result.stderr.strip()}")
         return False
     except Exception as e:
@@ -325,7 +401,14 @@ def sync_tasks(scheduler_config, log):
     else:
         remove_startup(log)
 
-    # 2. 全量清理旧任务后重新注册（保证配置变更实时生效）
+    # 2. 处理全局指令 PATH
+    auto_path = scheduler_config.get("auto_path", False)
+    if auto_path:
+        register_path_to_user_env(log)
+    else:
+        remove_path_from_user_env(log)
+
+    # 3. 全量清理旧任务后重新注册（保证配置变更实时生效）
     remove_all_tasks(log)
 
     # 3. 注册定时任务
@@ -459,6 +542,7 @@ def do_uninstall(log):
     log.info("🗑️ 正在卸载所有 DailyBot 定时任务...")
     remove_all_tasks(log)
     remove_startup(log)
+    remove_path_from_user_env(log)
 
     print("✅ 已清理所有 DailyBot 定时任务和自启动项")
     log.info("✅ 卸载完成")

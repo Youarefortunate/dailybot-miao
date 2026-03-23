@@ -133,6 +133,7 @@ enabled_workflows: ["wecom"]
 scheduler:
   enabled: true
   auto_start: true # 开机自启用
+  auto_path: false # 自动将程序路径添加到系统 PATH (方便全局执行命令)，默认关闭
   # 兜底执行时间 (如果今日不符合任何 tasks 规则，或配置全过期)
   default_time: "18:20"
   tasks: # 指定特定时间运行
