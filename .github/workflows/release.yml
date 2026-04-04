@@ -1,5 +1,6 @@
 name: Build and Release
 
+# 固定这个工作流何时触发
 on:
   push:
     tags:
@@ -37,6 +38,7 @@ jobs:
 
       - name: Build with PyInstaller
         id: build
+        shell: pwsh
         run: |
           # 动态获取 site-packages 路径以替换 .spec 中的绝对路径
           $SITE_PACKAGES = python -c "import site; print(site.getsitepackages()[0])"
@@ -66,7 +68,8 @@ jobs:
           # 拷贝必要文件 (exe, config, env template)
           Copy-Item "$DIST_DIR/DailyBot.exe" -Destination "release_temp/"
           Copy-Item "config/config.yaml" -Destination "release_temp/"
-          Copy-Item ".env" -Destination "release_temp/.env.example"
+          # 安全拷贝 .env (如果存在就拷，不存在就跳过，防止被忽略导致的报错)
+          if (Test-Path ".env") { Copy-Item ".env" -Destination "release_temp/.env.example" }
           
           # 压缩
           Compress-Archive -Path "release_temp/*" -DestinationPath "$PKG_ZIP"
@@ -100,7 +103,8 @@ jobs:
             ### 🛠 构建信息
             - **版本号**: `${{ steps.build.outputs.version }}`
             - **构建平台**: `Windows (GitHub Actions)`
-            - **构建时间**: ${{ github.event.head_commit.timestamp || env.GITHUB_RUN_ID }}
+            - **构建 ID**: `${{ github.run_id }}`
+            - **构建时间**: ${{ github.event.head_commit.timestamp || github.event.repository.pushed_at }}
             
             ### 📝 变更日志
             请查看下方的 [自动生成日志] 或 [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)。

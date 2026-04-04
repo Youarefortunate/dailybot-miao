@@ -23,11 +23,27 @@ jobs:
           BODY="${{ github.event.release.body }}"
           DATE=$(date +%Y-%m-%d)
           
-          # 构造新的变更内容
-          NEW_CONTENT="## [$VERSION] - $DATE\n\n$BODY\n\n"
+          # 确保文件存在
+          if [ ! -f CHANGELOG.md ]; then
+            echo "# Changelog" > CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            echo "项目的所有重要变更都将记录在此文件中。" >> CHANGELOG.md
+            echo "" >> CHANGELOG.md
+          fi
+
+          # 构造新的变更内容到临时文件
+          echo "## [$VERSION] - $DATE" > new_entry.md
+          echo "" >> new_entry.md
+          echo "$BODY" >> new_entry.md
+          echo "" >> new_entry.md
           
-          # 将新内容插入到标题之后（假设第一行是 # Changelog）
-          sed -i "3i $NEW_CONTENT" CHANGELOG.md
+          # 拼接：头 4 行 + 新内容 + 剩余部分
+          head -n 4 CHANGELOG.md > header.md
+          tail -n +5 CHANGELOG.md > tail.md
+          cat header.md new_entry.md tail.md > CHANGELOG.md
+          
+          # 清理
+          rm new_entry.md header.md tail.md
           
           # 提交更改
           git config user.name "github-actions[bot]"
