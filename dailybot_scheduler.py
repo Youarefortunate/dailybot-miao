@@ -9,6 +9,7 @@ DailyBot Windows 定时调度器
 用法：
     DailyBot.exe              # 同步配置（注册/删除定时任务和自启动），静默退出
     DailyBot.exe --trigger    # 执行核心业务逻辑（由定时任务调用）
+    DailyBot.exe --once       # 手动执行一次核心业务逻辑
     DailyBot.exe --status     # 查看当前任务注册状态（分配控制台窗口）
     DailyBot.exe --uninstall  # 清理所有已注册的任务和自启动
 """
@@ -460,6 +461,8 @@ def execute_trigger(log):
 
             asyncio.run(main())
             log.info("✅ 核心业务逻辑执行完毕")
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        log.info("👋 用户通过键盘中断了程序执行，正在安全退出...")
     except Timeout:
         log.warning("⚠️ 另一个 DailyBot 实例正在运行，本次触发跳过")
     except Exception as e:
@@ -567,6 +570,11 @@ def main():
         help="执行核心业务逻辑（由定时任务调用）",
     )
     parser.add_argument(
+        "--once",
+        action="store_true",
+        help="手动执行一次",
+    )
+    parser.add_argument(
         "--status",
         action="store_true",
         help="查看当前任务注册状态",
@@ -578,13 +586,13 @@ def main():
     )
     args = parser.parse_args()
 
-    if args.trigger or args.status or args.uninstall:
+    if args.trigger or args.once or args.status or args.uninstall:
         ensure_console()
 
     log = setup_logging()
     scheduler_config = load_scheduler_config()
 
-    if args.trigger:
+    if args.trigger or args.once:
         execute_trigger(log)
     elif args.status:
         show_status(scheduler_config)
