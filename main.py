@@ -1,4 +1,5 @@
 import asyncio
+import socksio
 import json
 import textwrap
 import os
