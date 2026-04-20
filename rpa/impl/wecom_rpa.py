@@ -59,7 +59,7 @@ class WeComRPA(BaseRPA):
                     )
                     # 轮询检测二维码是否消失或页面是否跳转
                     while await self.page.query_selector(self.LOGIN_QRCODE_SELECTOR):
-                        await asyncio.sleep(2)
+                        await self._human_sleep(2)
                     logger.info(f"[{self.RPA_NAME}] 二维码已消失，登录成功或已跳过。")
 
                 # 检查是否已进入表单内容页
@@ -81,18 +81,18 @@ class WeComRPA(BaseRPA):
                         logger.debug(
                             f"[{self.RPA_NAME}] URL 匹配成功但尚未发现填报元素，继续等待..."
                         )
-                        await asyncio.sleep(2)
+                        await self._human_sleep(2)
                 else:
                     logger.debug(
                         f"[{self.RPA_NAME}] 当前 URL: {current_url} (可能在扫码中或处于错误页)，等待页面到达目标区域..."
                     )
-                    await asyncio.sleep(5)
+                    await self._human_sleep(5)
             except Exception as e:
                 if "Execution context was destroyed" in str(e):
                     logger.debug(
                         f"[{self.RPA_NAME}] 检测到页面跳转导致的上下文切换，正在重试检测..."
                     )
-                    await asyncio.sleep(2)
+                    await self._human_sleep(2)
                 else:
                     err_msg = str(e)
                     if (
@@ -102,7 +102,7 @@ class WeComRPA(BaseRPA):
                         # 识别到浏览器手动关闭，直接向上抛出异常，让 BaseRPA 处理优雅退出
                         raise e
                     logger.error(f"[{self.RPA_NAME}] 登录检测发生异常: {e}")
-                    await asyncio.sleep(5)
+                    await self._human_sleep(5)
 
     async def fill_form(self, report_data: Any):
         """执行表单填充逻辑"""
@@ -248,7 +248,7 @@ class WeComRPA(BaseRPA):
                 # 兜底：如果找不到子元素，可能该 span 自身通过 contenteditable 或键盘事件处理，尝试全选并模拟输入
                 await self.page.keyboard.press("Control+A")
                 await self.page.keyboard.press("Backspace")
-                await self.page.keyboard.type(value)
+                await self.page.keyboard.type(value, delay=self.typing_delay)
 
             logger.debug(f'[{self.RPA_NAME}] "{title}" 填充成功')
         except Exception as e:
@@ -487,7 +487,7 @@ class WeComRPA(BaseRPA):
                     )
 
                     # 2. 等待 1s
-                    await asyncio.sleep(1)
+                    await self._human_sleep(1)
 
                     # 3. 点击删除图标
                     trashbin = await self.page.query_selector(trashbin_selector)

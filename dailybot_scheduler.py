@@ -412,27 +412,17 @@ def sync_tasks(scheduler_config, log):
     # 3. 全量清理旧任务后重新注册（保证配置变更实时生效）
     remove_all_tasks(log)
 
-    # 3. 注册定时任务
-    if not tasks:
-        # 未配置具体任务，使用 default_time 兜底，每天运行
-        register_schtask(f"{TASK_NAME_PREFIX}_Default", default_time, exe_path, log)
-    else:
-        registered_times = set()
+    # 4. 注册定时任务
+    if tasks:
+        # 只要配置了 tasks，就完全信任该列表，不再进行 default_time 的兜底注册
         for idx, task in enumerate(tasks):
             time_str = task.get("time", default_time)
             weekdays = task.get("weekdays")
             task_name = f"{TASK_NAME_PREFIX}_Task_{idx}"
             register_schtask(task_name, time_str, exe_path, log, weekdays)
-            registered_times.add(time_str)
-
-        # 如果 default_time 未被任何 task 覆盖，额外注册为每日兜底
-        if default_time not in registered_times:
-            register_schtask(
-                f"{TASK_NAME_PREFIX}_Default",
-                default_time,
-                exe_path,
-                log,
-            )
+    else:
+        # 未配置具体任务，使用 default_time 兜底，每天运行
+        register_schtask(f"{TASK_NAME_PREFIX}_Default", default_time, exe_path, log)
 
     log.info("🎉 定时任务同步完成")
 

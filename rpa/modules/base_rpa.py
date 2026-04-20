@@ -50,7 +50,12 @@ class BaseRPA(ABC):
             if self.speed_val == int(self.speed_val)
             else self.speed_val
         )
-        logger.debug(f"[{self.RPA_NAME}] 自动化速度倍率已设置为: {display_speed}")
+        # 计算键盘键入延迟 (ms): speed=1.0 -> 100ms, speed=0.1 -> 10ms
+        self.typing_delay = int(self.speed_val * 100)
+
+        logger.debug(
+            f"[{self.RPA_NAME}] 自动化速度倍率已设置为: {display_speed} (输入延迟: {self.typing_delay}ms)"
+        )
 
         # 外部化配置读取
         self.form_url = rpa_config.get("form_url", "")
@@ -103,6 +108,7 @@ class BaseRPA(ABC):
             "headless": False,
             "viewport": None,  # 设置为 None 以允许浏览器窗口决定实际视口大小
             "no_viewport": True,  # 禁用 Playwright 的默认固定视口缩放
+            "slow_mo": int(self.speed_val * 100),  # 根据速度设置全局动作延迟
             "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
             "args": [
                 "--start-maximized",
